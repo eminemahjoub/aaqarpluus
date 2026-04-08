@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
       city: body.city ?? null,
       neighborhood: body.neighborhood ?? null,
       address: body.address?.trim() || null,
+      latitude: body.latitude !== undefined && body.latitude !== null && body.latitude !== "" ? Number(body.latitude) : null,
+      longitude: body.longitude !== undefined && body.longitude !== null && body.longitude !== "" ? Number(body.longitude) : null,
       area_m2: body.area_m2 ? Number(body.area_m2) : null,
       property_cost: body.property_cost ? Number(body.property_cost) : null,
       units_count: body.units_count ?? 0,

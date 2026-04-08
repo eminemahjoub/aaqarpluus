@@ -102,6 +102,38 @@ function neighborhoodsForCity(city: string) {
   return SA_NEIGHBORHOODS_BY_CITY[city] ?? [];
 }
 
+function toNumOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function googleMapsEmbedSrc(args: { latitude?: unknown; longitude?: unknown; addressText?: string | null }) {
+  const lat = toNumOrNull(args.latitude);
+  const lng = toNumOrNull(args.longitude);
+  if (lat !== null && lng !== null) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=15&output=embed`;
+  }
+  const q = (args.addressText ?? "").trim();
+  if (q) return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=14&output=embed`;
+  return null;
+}
+
+function googleMapsLink(args: { latitude?: unknown; longitude?: unknown; addressText?: string | null }) {
+  const lat = toNumOrNull(args.latitude);
+  const lng = toNumOrNull(args.longitude);
+  if (lat !== null && lng !== null) return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+  const q = (args.addressText ?? "").trim();
+  if (q) return `https://www.google.com/maps?q=${encodeURIComponent(q)}`;
+  return null;
+}
+
 // Types & Interfaces
 type DbProperty = {
   id: string;
@@ -112,6 +144,8 @@ type DbProperty = {
   city: string | null;
   neighborhood: string | null;
   address: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   property_model_type: string | null;
   cover_url: string | null;
   units_count: number;
@@ -980,6 +1014,8 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     city: property.city ?? "",
     neighborhood: property.neighborhood ?? "",
     address: property.address ?? "",
+    latitude: (property as any).latitude != null ? String((property as any).latitude) : "",
+    longitude: (property as any).longitude != null ? String((property as any).longitude) : "",
     title: property.title ?? property.name,
     tag: "",
     renter: "",
@@ -1010,9 +1046,12 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
         body: JSON.stringify({
           name: formData.name || property.name,
           title: formData.title || null,
+          region: formData.region || null,
           city: formData.city || null,
           neighborhood: formData.neighborhood || null,
           address: formData.address || null,
+          latitude: formData.latitude.trim() ? Number(formData.latitude) : null,
+          longitude: formData.longitude.trim() ? Number(formData.longitude) : null,
           area_m2: formData.area ? Number(formData.area) : property.area_m2,
           property_cost: formData.propertyCost ? Number(formData.propertyCost) : property.property_cost,
         }),
@@ -1139,6 +1178,60 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             className="h-20 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
           />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="sm:col-span-1">
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">خط العرض (Latitude)</label>
+            <input
+              type="number"
+              step="0.0000001"
+              inputMode="decimal"
+              placeholder="مثال: 24.7136"
+              value={formData.latitude}
+              onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">خط الطول (Longitude)</label>
+            <input
+              type="number"
+              step="0.0000001"
+              inputMode="decimal"
+              placeholder="مثال: 46.6753"
+              value={formData.longitude}
+              onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الخريطة</label>
+            <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-emerald-800/30 dark:bg-[#0f1e14]">
+              {(() => {
+                const addressText = [formData.city, formData.neighborhood, formData.address].filter(Boolean).join("، ");
+                const src = googleMapsEmbedSrc({ latitude: formData.latitude, longitude: formData.longitude, addressText });
+                const link = googleMapsLink({ latitude: formData.latitude, longitude: formData.longitude, addressText });
+                if (!src) {
+                  return <div className="flex h-28 items-center justify-center text-xs text-gray-500 dark:text-gray-400">أدخل العنوان أو الإحداثيات لعرض الخريطة</div>;
+                }
+                return (
+                  <div className="relative">
+                    <iframe title="map" src={src} className="h-28 w-full" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                    {link ? (
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-1 text-[11px] font-medium text-gray-700 shadow-sm hover:bg-white dark:bg-[#1a3528]/90 dark:text-gray-200"
+                      >
+                        فتح في خرائط Google
+                      </a>
+                    ) : null}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -3580,6 +3673,56 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Map */}
+          <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">الموقع على الخريطة</h3>
+              {(() => {
+                const addressText = [property.city, property.neighborhood, property.address].filter(Boolean).join("، ");
+                const link = googleMapsLink({
+                  latitude: (property as any).latitude,
+                  longitude: (property as any).longitude,
+                  addressText,
+                });
+                if (!link) return null;
+                return (
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+                  >
+                    فتح في خرائط Google
+                  </a>
+                );
+              })()}
+            </div>
+            {(() => {
+              const addressText = [property.city, property.neighborhood, property.address].filter(Boolean).join("، ");
+              const src = googleMapsEmbedSrc({
+                latitude: (property as any).latitude,
+                longitude: (property as any).longitude,
+                addressText,
+              });
+              if (!src) {
+                return <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 dark:border-emerald-800/50 dark:text-gray-400">أضف العنوان أو الإحداثيات لعرض الخريطة</div>;
+              }
+              return (
+                <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-emerald-800/30">
+                  <iframe title="property-map" src={src} className="h-64 w-full" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                </div>
+              );
+            })()}
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              {(() => {
+                const lat = (property as any).latitude;
+                const lng = (property as any).longitude;
+                if (lat != null && lng != null) return `الإحداثيات: ${lat}, ${lng}`;
+                return "نصيحة: أدخل الإحداثيات من شاشة تعديل العقار للحصول على دقة أعلى.";
+              })()}
+            </p>
           </div>
 
           {/* Contract Info */}

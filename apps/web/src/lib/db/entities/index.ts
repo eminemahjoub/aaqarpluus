@@ -33,6 +33,8 @@ export const PropertySchema = schema({
     city: { type: "varchar", length: 100, nullable: true },
     neighborhood: { type: "varchar", length: 100, nullable: true },
     address: { type: "text", nullable: true },
+    latitude: { type: "numeric", precision: 10, scale: 7, nullable: true },
+    longitude: { type: "numeric", precision: 10, scale: 7, nullable: true },
     area_m2: { type: "numeric", precision: 10, scale: 2, nullable: true },
     property_cost: { type: "numeric", precision: 14, scale: 2, nullable: true },
     units_count: { type: "int", default: 0 },
