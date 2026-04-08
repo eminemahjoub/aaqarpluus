@@ -1,0 +1,10 @@
+/.kiro
+/.pnpm-store
+/.vscode
+/apps/web/node_modules
+/apps/web/.next
+/shared/supabase/.temp
+
+# User uploads — keep directory only (see .gitkeep); do not commit binaries
+apps/web/public/uploads/**
+!apps/web/public/uploads/.gitkeep

@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ─── Brand Palette ───────────────────────────────────────────
+     Primary   #1B5E3C  → Forest Green  (logos, H1/H2, navbar)
+     Accent    #C5A021  → Metallic Gold (CTA buttons, icons, stars)
+     Secondary #38761D  → Support Green (hover states, secondary elements)
+     Background #FFFFFF → Pure White   (page bg, content areas)
+  ─────────────────────────────────────────────────────────────── */
+
+  --background: 0 0% 100%;           /* #FFFFFF */
+  --foreground: 152 55% 10%;         /* dark green for readable text */
+
+  --primary: 152 55% 23%;            /* #1B5E3C — Forest Green */
+  --primary-foreground: 0 0% 100%;   /* white text on primary */
+
+  --secondary: 103 62% 28%;          /* #38761D — Support Green */
+  --secondary-foreground: 0 0% 100%; /* white text on secondary */
+
+  --accent: 43 72% 45%;              /* #C5A021 — Metallic Gold */
+  --accent-foreground: 0 0% 100%;    /* white text on accent */
+
+  --muted: 152 20% 94%;              /* light green-tinted muted bg */
+  --muted-foreground: 152 15% 40%;   /* muted text */
+
+  --border: 152 20% 85%;             /* subtle green-tinted border */
+  --input: 152 20% 85%;
+  --ring: 43 72% 45%;                /* gold focus ring */
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 152 30% 8%;          /* very dark green bg */
+  --foreground: 0 0% 95%;
+
+  --primary: 152 45% 35%;            /* lighter forest green */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 103 45% 35%;          /* lighter support green */
+  --secondary-foreground: 0 0% 100%;
+
+  --accent: 43 65% 52%;              /* brighter gold in dark mode */
+  --accent-foreground: 0 0% 100%;
+
+  --muted: 152 20% 15%;
+  --muted-foreground: 152 15% 60%;
+
+  --border: 152 20% 20%;
+  --input: 152 20% 20%;
+  --ring: 43 65% 52%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-tajawal), Arial, Helvetica, sans-serif;
+  direction: rtl;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.65s ease-out both;
+}
+
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
