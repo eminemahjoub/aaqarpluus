@@ -1524,6 +1524,13 @@ function DeleteConfirmationModal({ isOpen, onClose, onConfirm, propertyName }: {
 // ADD CONTRACT MODAL
 // ============================================================================
 
+function localCalendarYmd(d: Date = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function AddContractModal({
   isOpen,
   onClose,
@@ -1543,7 +1550,6 @@ function AddContractModal({
     status: string;
   }) => void;
 }) {
-  const router = useRouter();
   const [tenantOptions, setTenantOptions] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [unitOptions, setUnitOptions] = useState<Array<{ id: string; label: string; price_sar: number }>>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>("");
@@ -1554,7 +1560,8 @@ function AddContractModal({
     property: "",
     propertyNumber: "",
     tenantName: "",
-    startDate: new Date().toISOString().split("T")[0],
+    tenantContactId: "",
+    startDate: localCalendarYmd(),
     endDate: "",
     monthsCount: "12",
     periodicBilling: false,
@@ -1572,7 +1579,6 @@ function AddContractModal({
     waterCost: "",
     electricityCost: "",
     otherCosts: "",
-    actualEndDate: "",
     notes: "",
   });
 
@@ -1598,7 +1604,7 @@ function AddContractModal({
     const months = Math.max(1, Math.min(240, Number(formData.monthsCount || 1)));
     if (!endDateManual) {
       const computedEnd = addMonthsYmd(formData.startDate, months);
-      setFormData((p) => ({ ...p, endDate: computedEnd, actualEndDate: p.actualEndDate || computedEnd }));
+      setFormData((p) => ({ ...p, endDate: computedEnd }));
     }
 
     const totalRent = Number(formData.rent || 0);
@@ -1620,17 +1626,19 @@ function AddContractModal({
     if (!isOpen) return;
     setSelectedUnitId("");
     setPaymentsEditable(false);
+    setEndDateManual(false);
     setContractError(null);
+    const today = localCalendarYmd();
     setFormData((p) => ({
       ...p,
       tenantName: "",
-      startDate: new Date().toISOString().split("T")[0],
+      tenantContactId: "",
+      startDate: today,
       endDate: "",
       monthsCount: "12",
       rent: "",
       contractNumber: "",
       notes: "",
-      actualEndDate: "",
     }));
     void (async () => {
       const [contactsRes, unitsRes] = await Promise.all([
@@ -1658,8 +1666,8 @@ function AddContractModal({
     e.preventDefault();
     setContractError(null);
     if (!formData.startDate || !formData.endDate) return;
-    if (!formData.tenantName.trim()) {
-      setContractError("يرجى إدخال اسم المستأجر.");
+    if (!formData.tenantContactId) {
+      setContractError("يرجى اختيار المستأجر.");
       return;
     }
     const rent = Number(formData.rent) || 0;
@@ -1668,24 +1676,7 @@ function AddContractModal({
       return;
     }
     void (async () => {
-      // Resolve contact_id: find by name or create a new contact
-      let contactId: string | null = null;
-      const selectedTenant = tenantOptions.find((t) => t.name === formData.tenantName.trim());
-      if (selectedTenant) {
-        contactId = selectedTenant.id;
-      } else if (formData.tenantName.trim()) {
-        const contactRes = await fetch("/api/contacts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formData.tenantName.trim(), type: "tenant", status: "active" }),
-        });
-        if (contactRes.ok) {
-          const newContact = await contactRes.json();
-          contactId = newContact?.id ?? null;
-        }
-      }
-
-      if (!contactId) return;
+      const contactId = formData.tenantContactId;
 
       const paymentRows = (payments ?? [])
         .filter((p) => p && p.date && Number(p.amount) > 0)
@@ -1726,9 +1717,11 @@ function AddContractModal({
       const inserted = await contractRes.json();
       if (!inserted?.id) return;
 
+      const tenantLabel =
+        tenantOptions.find((t) => t.id === formData.tenantContactId)?.name?.trim() || formData.tenantName.trim() || "—";
       onCreated({
         id: String(inserted.id),
-        tenant: formData.tenantName.trim() || "—",
+        tenant: tenantLabel,
         unitId: selectedUnitId || null,
         startDate: formData.startDate,
         endDate: formData.endDate,
@@ -1772,24 +1765,30 @@ function AddContractModal({
           </div>
           <div>
             <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">اسم المستأجر</label>
-            <input
-              type="text"
-              list="aaqar-tenant-list"
-              placeholder="مثال: صالح"
-              value={formData.tenantName}
-              onChange={(e) => setFormData({ ...formData, tenantName: e.target.value })}
+            <select
+              value={formData.tenantContactId}
+              onChange={(e) => {
+                const id = e.target.value;
+                const t = tenantOptions.find((o) => o.id === id);
+                setFormData((p) => ({ ...p, tenantContactId: id, tenantName: t?.name ?? "" }));
+              }}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-            />
-            <datalist id="aaqar-tenant-list">
-              {tenantOptions.map((t) => (
-                <option key={t.id} value={t.name} />
+            >
+              <option value="">— اختر المستأجر —</option>
+              {(tenantOptions.some((t) => t.type === "tenant")
+                ? tenantOptions.filter((t) => t.type === "tenant")
+                : tenantOptions
+              ).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
               ))}
-            </datalist>
+            </select>
           </div>
           <div>
             <button
               type="button"
-              onClick={() => router.push("/dashboard/contacts")}
+              onClick={() => window.open("/dashboard/contacts", "_blank", "noopener,noreferrer")}
               className="mt-6 flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white"
             >
               <Plus className="h-4 w-4" />
@@ -1814,7 +1813,8 @@ function AddContractModal({
               value={formData.endDate}
               onChange={(e) => {
                 setEndDateManual(true);
-                setFormData((p) => ({ ...p, endDate: e.target.value }));
+                const v = e.target.value;
+                setFormData((p) => ({ ...p, endDate: v }));
               }}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
             />
@@ -2061,11 +2061,11 @@ function AddContractModal({
                 onClick={() => setPaymentsEditable((v) => !v)}
                 className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-200"
               >
-                تعديل
+                {paymentsEditable ? "تم" : "تعديل"}
               </button>
               <div className="text-sm text-gray-600 dark:text-gray-300">
                 نهاية العقد (الفعلي):
-                <span className="mr-2 font-semibold text-gray-900 dark:text-white">{formData.actualEndDate || formData.endDate}</span>
+                <span className="mr-2 font-semibold text-gray-900 dark:text-white">{formData.endDate || "—"}</span>
               </div>
             </div>
           </div>
@@ -2088,8 +2088,8 @@ function AddContractModal({
                         onChange={(e) =>
                           setPayments((prev) => prev.map((x) => (x.id === p.id ? { ...x, note: e.target.value } : x)))
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
-                        readOnly={!paymentsEditable}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
+                        disabled={!paymentsEditable}
                       />
                     </td>
                     <td className="px-4 py-2">
@@ -2099,8 +2099,8 @@ function AddContractModal({
                         onChange={(e) =>
                           setPayments((prev) => prev.map((x) => (x.id === p.id ? { ...x, amount: e.target.value } : x)))
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
-                        readOnly={!paymentsEditable}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
+                        disabled={!paymentsEditable}
                       />
                     </td>
                     <td className="px-4 py-2">
@@ -2110,8 +2110,8 @@ function AddContractModal({
                         onChange={(e) =>
                           setPayments((prev) => prev.map((x) => (x.id === p.id ? { ...x, date: e.target.value } : x)))
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
-                        readOnly={!paymentsEditable}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-right text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800/30 dark:bg-[#102318] dark:text-white"
+                        disabled={!paymentsEditable}
                       />
                     </td>
                   </tr>
