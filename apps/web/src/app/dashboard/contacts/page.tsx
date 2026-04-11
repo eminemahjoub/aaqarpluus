@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Phone, Plus, MoreHorizontal, User, PhoneCall } from "lucide-react";
+import { Phone, MoreHorizontal, User } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 
@@ -33,7 +33,7 @@ function toArabicType(db: ContactRow["type"]) {
 function ContactsContent() {
   const [loading, setLoading] = React.useState(true);
   const [contacts, setContacts] = React.useState<ContactRow[]>([]);
-  const [newContact, setNewContact] = React.useState({ name: "", phone: "", alternativePhone: "", type: "مستأجر" });
+  const [newContact, setNewContact] = React.useState({ name: "", phone: "", type: "مستأجر" });
 
   const refreshTick = useRealtimeRefresh();
 
@@ -62,7 +62,6 @@ function ContactsContent() {
       body: JSON.stringify({
         name: newContact.name.trim(),
         phone: newContact.phone.trim() || null,
-        alternative_phone: newContact.alternativePhone.trim() || null,
         type: toDbContactType(newContact.type),
         status: "active",
       }),
@@ -71,7 +70,7 @@ function ContactsContent() {
 
     const refresh = await fetch("/api/contacts");
     if (refresh.ok) setContacts(await refresh.json());
-    setNewContact({ name: "", phone: "", alternativePhone: "", type: "مستأجر" });
+    setNewContact({ name: "", phone: "", type: "مستأجر" });
   }
 
   return (
@@ -128,20 +127,6 @@ function ContactsContent() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-right text-sm font-medium text-gray-700 dark:text-gray-300">رقم الجوال البديل</label>
-                <div className="flex">
-                  <span className="flex items-center rounded-r-lg border border-r-0 border-gray-300 bg-gray-100 px-3 text-sm text-gray-600 dark:border-emerald-800/50 dark:bg-[#244033] dark:text-gray-400">966+</span>
-                  <input
-                    type="tel"
-                    value={newContact.alternativePhone}
-                    onChange={(e) => setNewContact({ ...newContact, alternativePhone: e.target.value })}
-                    placeholder="5xxxxxxxx"
-                    className="w-full rounded-l-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-                  />
-                </div>
-              </div>
-
               <button
                 type="submit"
                 className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-700"
@@ -184,13 +169,6 @@ function ContactsContent() {
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">{contact.name}</p>
                         <div className="mt-1 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                          {contact.alternative_phone && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs">رقم بديل</span>
-                              <PhoneCall className="h-3 w-3" />
-                              <span dir="ltr">{contact.alternative_phone}</span>
-                            </div>
-                          )}
                           <div className="flex items-center gap-1">
                             <Phone className="h-3 w-3" />
                             <span dir="ltr">{contact.phone || "—"}</span>
