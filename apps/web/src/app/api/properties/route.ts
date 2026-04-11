@@ -108,6 +108,13 @@ export async function POST(req: NextRequest) {
       water_account: body.water_account ?? null,
       electricity_account: body.electricity_account ?? null,
       description: body.description ?? null,
+      payment_frequency: body.payment_frequency?.trim() || null,
+      lessor_type: body.lessor_type === "office" || body.lessor_type === "owner" ? body.lessor_type : null,
+      lessor_contact_id: body.lessor_type === "office" && body.lessor_contact_id ? body.lessor_contact_id : null,
+      commission_percent:
+        body.commission_percent !== undefined && body.commission_percent !== null && body.commission_percent !== ""
+          ? Number(body.commission_percent)
+          : null,
     } as any);
 
     await repo.save(property);

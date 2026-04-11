@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
@@ -102,6 +103,32 @@ function neighborhoodsForCity(city: string) {
   return SA_NEIGHBORHOODS_BY_CITY[city] ?? [];
 }
 
+type OfficeContactOption = { id: string; name: string; phone?: string | null; type?: string };
+
+function useOfficeContacts(isOpen: boolean) {
+  const [offices, setOffices] = useState<OfficeContactOption[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/contacts");
+        if (!res.ok) return;
+        const data: unknown = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        const filtered = (list as OfficeContactOption[]).filter((c) => c.type === "office");
+        if (!cancelled) setOffices(filtered);
+      } catch {
+        if (!cancelled) setOffices([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+  return offices;
+}
+
 function toNumOrNull(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
@@ -156,6 +183,12 @@ type DbProperty = {
   area_m2: number | null;
   property_cost: number | null;
   created_at: string;
+  payment_frequency?: string | null;
+  lessor_type?: string | null;
+  lessor_contact_id?: string | null;
+  commission_percent?: number | null;
+  electricity_account?: string | null;
+  water_account?: string | null;
 };
 
 interface Expense {
@@ -572,6 +605,7 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
 
 function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
+  const officeContacts = useOfficeContacts(isOpen);
   const [structureError, setStructureError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
@@ -587,12 +621,11 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     unitsCount: "1",
     apartmentsCount: "",
     shopsCount: "",
-    otherUnitsCount: "0",
     unitIdentifiers: "",
     contractDuration: "شهري",
     commissionPercent: "",
-    tag: "",
-    renter: "",
+    lessorType: "owner" as "owner" | "office",
+    lessorContactId: "",
     area: "",
     annualRent: "30000",
     rentWithAddition: "30000",
@@ -600,7 +633,6 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     endDate: "2026-04-01",
     monthsCount: "12",
     includeFees: false,
-    propertyNumberInput: "",
     contractTerms: "الشروط الافتراضية",
     notes: "",
     electricityAccount: "",
@@ -614,8 +646,12 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = totalUnitsFromCounts;
+    if (formData.lessorType === "office" && !formData.lessorContactId) {
+      setStructureError("يرجى اختيار المكتب من القائمة (أو أضف مكتباً من جهات الاتصال بنوع «مكتب»).");
+      return;
+    }
     if (total <= 0) {
-      setStructureError("يرجى إدخال عدد الوحدات (شقق/محلات/أخرى).");
+      setStructureError("يرجى إدخال عدد الوحدات (شقق أو محلات).");
       return;
     }
     setStructureError(null);
@@ -635,11 +671,17 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         property_model_type: formData.propertyModelType || null,
         apartments_count: Number(formData.apartmentsCount || 0),
         shops_count: Number(formData.shopsCount || 0),
-        other_units_count: Number(formData.otherUnitsCount || 0),
+        other_units_count: 0,
         unit_identifiers: formData.unitIdentifiers?.trim() || null,
         units_count: total,
         area_m2: formData.area ? Number(formData.area) : null,
         property_cost: formData.propertyCost ? Number(formData.propertyCost) : null,
+        water_account: formData.waterAccount?.trim() || null,
+        electricity_account: formData.electricityAccount?.trim() || null,
+        payment_frequency: formData.contractDuration?.trim() || null,
+        lessor_type: formData.lessorType,
+        lessor_contact_id: formData.lessorType === "office" ? formData.lessorContactId : null,
+        commission_percent: formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null,
       }),
     });
     setSaving(false);
@@ -662,10 +704,9 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
   const totalUnitsFromCounts = React.useMemo(() => {
     const a = Number(formData.apartmentsCount || 0);
     const s = Number(formData.shopsCount || 0);
-    const o = Number(formData.otherUnitsCount || 0);
-    const total = [a, s, o].reduce((acc, n) => acc + (Number.isFinite(n) ? n : 0), 0);
+    const total = [a, s].reduce((acc, n) => acc + (Number.isFinite(n) ? n : 0), 0);
     return Math.max(0, Math.min(200, total));
-  }, [formData.apartmentsCount, formData.shopsCount, formData.otherUnitsCount]);
+  }, [formData.apartmentsCount, formData.shopsCount]);
 
   // تم نقل إكمال تفاصيل الوحدات إلى صفحة مستقلة بعد حفظ تفاصيل العقار
 
@@ -816,42 +857,29 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">وحدات أخرى</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={200}
-                    value={formData.otherUnitsCount}
-                    onChange={(e) => setFormData({ ...formData, otherUnitsCount: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    إجمالي الوحدات: {totalUnitsFromCounts}
-                  </p>
-                </div>
-                <div>
-                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">أرقام الوحدات / النطاق</label>
-                  <input
-                    type="text"
-                    placeholder="مثال: 101-124 أو A1, A2, B1"
-                    value={formData.unitIdentifiers}
-                    onChange={(e) => setFormData({ ...formData, unitIdentifiers: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-                  />
-                </div>
+              <div className="mt-4">
+                <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">أرقام الوحدات / النطاق</label>
+                <input
+                  type="text"
+                  placeholder="مثال: 101-124 أو A1, A2, B1"
+                  value={formData.unitIdentifiers}
+                  onChange={(e) => setFormData({ ...formData, unitIdentifiers: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">إجمالي الوحدات: {totalUnitsFromCounts}</p>
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">مدة العقد *</label>
+                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">طريقة الدفع / الاستحقاق *</label>
                   <select
                     value={formData.contractDuration}
                     onChange={(e) => setFormData({ ...formData, contractDuration: e.target.value })}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
                   >
                     <option value="شهري">شهري</option>
+                    <option value="نصف سنوي">نصف سنوي</option>
+                    <option value="ربع سنوي">ربع سنوي</option>
                     <option value="سنوي">سنوي</option>
                   </select>
                 </div>
@@ -888,31 +916,59 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             className="h-20 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
           />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">وسم</label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option value="">اختر</option>
-            </select>
+        <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
+          <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المؤجر</p>
+          <div className="flex flex-wrap gap-6">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+              <input
+                type="radio"
+                name="add-lessor-type"
+                checked={formData.lessorType === "owner"}
+                onChange={() => setFormData({ ...formData, lessorType: "owner", lessorContactId: "" })}
+                className="text-indigo-600"
+              />
+              مالك
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+              <input
+                type="radio"
+                name="add-lessor-type"
+                checked={formData.lessorType === "office"}
+                onChange={() => setFormData({ ...formData, lessorType: "office" })}
+                className="text-indigo-600"
+              />
+              مكتب
+            </label>
           </div>
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">المؤجر</label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option value="">اختر</option>
-            </select>
-          </div>
+          {formData.lessorType === "office" ? (
+            <div className="mt-3">
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
+              <select
+                value={formData.lessorContactId}
+                onChange={(e) => setFormData({ ...formData, lessorContactId: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              >
+                <option value="">—</option>
+                {officeContacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.phone ? ` (${c.phone})` : ""}
+                  </option>
+                ))}
+              </select>
+              {officeContacts.length === 0 ? (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  لا توجد جهات اتصال نوعها «مكتب». أضف مكتباً من{" "}
+                  <Link href="/dashboard/contacts" className="font-medium underline">
+                    جهات الاتصال
+                  </Link>{" "}
+                  واختر النوع «مكتب».
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الوصف</label>
-            <input
-              type="text"
-              placeholder="رقم حساب المياه"
-              value={formData.propertyNumberInput}
-              onChange={(e) => setFormData({ ...formData, propertyNumberInput: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-            />
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">رقم حساب الكهرباء</label>
             <input
@@ -1007,6 +1063,7 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 // ============================================================================
 
 function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onClose: () => void; property: DbProperty }) {
+  const officeContacts = useOfficeContacts(isOpen);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     name: property.name,
@@ -1017,8 +1074,13 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     latitude: (property as any).latitude != null ? String((property as any).latitude) : "",
     longitude: (property as any).longitude != null ? String((property as any).longitude) : "",
     title: property.title ?? property.name,
-    tag: "",
-    renter: "",
+    lessorType: ((property as any).lessor_type === "office" ? "office" : "owner") as "owner" | "office",
+    lessorContactId: String((property as any).lessor_contact_id ?? ""),
+    paymentFrequency: String((property as any).payment_frequency ?? "شهري"),
+    commissionPercent:
+      (property as any).commission_percent != null && (property as any).commission_percent !== ""
+        ? String((property as any).commission_percent)
+        : "",
     area: property.area_m2 ? String(property.area_m2) : "",
     annualRent: "",
     rentWithAddition: "",
@@ -1026,11 +1088,10 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     endDate: "",
     monthsCount: "12",
     includeFees: false,
-    propertyNumberInput: "",
     contractTerms: "الشروط الافتراضية",
     notes: "",
-    electricityAccount: "",
-    waterAccount: "",
+    electricityAccount: (property as any).electricity_account ?? "",
+    waterAccount: (property as any).water_account ?? "",
     propertyCost: property.property_cost ? String(property.property_cost) : "",
   });
 
@@ -1054,6 +1115,12 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
           longitude: formData.longitude.trim() ? Number(formData.longitude) : null,
           area_m2: formData.area ? Number(formData.area) : property.area_m2,
           property_cost: formData.propertyCost ? Number(formData.propertyCost) : property.property_cost,
+          water_account: formData.waterAccount?.trim() || null,
+          electricity_account: formData.electricityAccount?.trim() || null,
+          payment_frequency: formData.paymentFrequency?.trim() || null,
+          lessor_type: formData.lessorType,
+          lessor_contact_id: formData.lessorType === "office" ? formData.lessorContactId || null : null,
+          commission_percent: formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null,
         }),
       });
       // Upload any new images
@@ -1233,31 +1300,87 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
             </div>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">وسم</label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option value="">اختر</option>
-            </select>
+        <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
+          <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المؤجر وطريقة الدفع</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">طريقة الدفع / الاستحقاق</label>
+              <select
+                value={formData.paymentFrequency}
+                onChange={(e) => setFormData({ ...formData, paymentFrequency: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              >
+                <option value="شهري">شهري</option>
+                <option value="نصف سنوي">نصف سنوي</option>
+                <option value="ربع سنوي">ربع سنوي</option>
+                <option value="سنوي">سنوي</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة %</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                placeholder="مثال: 5.5"
+                value={formData.commissionPercent}
+                onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">المؤجر</label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option value="">اختر</option>
-            </select>
+          <div className="mt-4 flex flex-wrap gap-6">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+              <input
+                type="radio"
+                name="edit-lessor-type"
+                checked={formData.lessorType === "owner"}
+                onChange={() => setFormData({ ...formData, lessorType: "owner", lessorContactId: "" })}
+                className="text-indigo-600"
+              />
+              مالك
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+              <input
+                type="radio"
+                name="edit-lessor-type"
+                checked={formData.lessorType === "office"}
+                onChange={() => setFormData({ ...formData, lessorType: "office" })}
+                className="text-indigo-600"
+              />
+              مكتب
+            </label>
           </div>
+          {formData.lessorType === "office" ? (
+            <div className="mt-3">
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
+              <select
+                value={formData.lessorContactId}
+                onChange={(e) => setFormData({ ...formData, lessorContactId: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              >
+                <option value="">—</option>
+                {officeContacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.phone ? ` (${c.phone})` : ""}
+                  </option>
+                ))}
+              </select>
+              {officeContacts.length === 0 ? (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  أضف مكتباً من{" "}
+                  <Link href="/dashboard/contacts" className="font-medium underline">
+                    جهات الاتصال
+                  </Link>{" "}
+                  (النوع: مكتب).
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الوصف</label>
-            <input
-              type="text"
-              placeholder="رقم حساب المياه"
-              value={formData.propertyNumberInput}
-              onChange={(e) => setFormData({ ...formData, propertyNumberInput: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-            />
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">رقم حساب الكهرباء</label>
             <input
@@ -4787,6 +4910,7 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
         onSuccess={bumpRefresh}
       />
       <EditPropertyModal
+        key={property.id}
         isOpen={showEditProperty}
         onClose={() => setShowEditProperty(false)}
         property={property}

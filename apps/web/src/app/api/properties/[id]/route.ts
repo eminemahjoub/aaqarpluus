@@ -98,7 +98,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "area_m2",
       "property_cost",
       "units_count",
+      "apartments_count",
+      "shops_count",
+      "other_units_count",
+      "unit_identifiers",
+      "title_deed_number",
+      "water_account",
+      "electricity_account",
       "description",
+      "payment_frequency",
+      "lessor_type",
+      "lessor_contact_id",
+      "commission_percent",
     ];
     for (const f of fields) {
       if (body[f] !== undefined) updates[f] = body[f];

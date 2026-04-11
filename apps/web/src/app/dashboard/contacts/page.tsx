@@ -10,12 +10,13 @@ type ContactRow = {
   name: string;
   phone: string | null;
   alternative_phone: string | null;
-  type: "tenant" | "owner" | "service_provider" | "client" | "other";
+  type: "tenant" | "owner" | "service_provider" | "client" | "other" | "office";
   status: string;
 };
 
 function toDbContactType(ar: string): ContactRow["type"] {
   if (ar === "مالك") return "owner";
+  if (ar === "مكتب") return "office";
   if (ar === "مورد خدمة") return "service_provider";
   if (ar === "عميل") return "client";
   return "tenant";
@@ -23,6 +24,7 @@ function toDbContactType(ar: string): ContactRow["type"] {
 
 function toArabicType(db: ContactRow["type"]) {
   if (db === "owner") return "مالك";
+  if (db === "office") return "مكتب";
   if (db === "service_provider") return "مورد خدمة";
   if (db === "client") return "عميل";
   return "مستأجر";
@@ -93,6 +95,7 @@ function ContactsContent() {
                 >
                   <option value="مستأجر">مستأجر</option>
                   <option value="مالك">مالك</option>
+                  <option value="مكتب">مكتب</option>
                   <option value="مورد خدمة">مورد خدمة</option>
                   <option value="عميل">عميل</option>
                 </select>
@@ -172,7 +175,7 @@ function ContactsContent() {
                       <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                         <MoreHorizontal className="h-5 w-5" />
                       </button>
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${toArabicType(contact.type) === "مستأجر" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : toArabicType(contact.type) === "مورد خدمة" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400"}`}>
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${toArabicType(contact.type) === "مستأجر" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : toArabicType(contact.type) === "مورد خدمة" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" : toArabicType(contact.type) === "مكتب" ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300" : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400"}`}>
                         {toArabicType(contact.type)}
                       </span>
                     </div>
