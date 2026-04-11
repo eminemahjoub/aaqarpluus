@@ -164,6 +164,7 @@ export const TaskSchema = schema({
     status: { type: "varchar", length: 50, default: "pending" },
     priority: { type: "varchar", length: 50, default: "medium" },
     cost_sar: { type: "numeric", precision: 14, scale: 2, default: 0 },
+    extra: { type: "jsonb", nullable: true },
     created_at: { type: "timestamp", createDate: true },
     updated_at: { type: "timestamp", updateDate: true },
   },

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
+import { occursOnCalendarDay } from "@/lib/recurring-tasks";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import {
   Plus,
@@ -44,6 +45,12 @@ interface Task {
   createdAt: string;
   allDay?: boolean;
   attachments?: string[];
+  extra?: {
+    recurrence?: "none" | "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+    attachments_before?: Array<{ id?: string; url: string; name: string }>;
+    attachments_after?: Array<{ id?: string; url: string; name: string }>;
+    linked_property_document_ids?: string[];
+  };
 }
 
 // Tasks are loaded from Supabase.
@@ -53,10 +60,12 @@ function CalendarWidget({
   currentDate,
   selectedDate,
   onSelectDate,
+  getTaskCountForDay,
 }: {
   currentDate: Date;
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
+  getTaskCountForDay?: (day: number) => number;
 }) {
   const monthNames = [
     "January",
@@ -142,20 +151,24 @@ function CalendarWidget({
           }
           const isSelected =
             selectedDate.getDate() === day &&
-            selectedDate.getMonth() === currentDate.getMonth();
+            selectedDate.getMonth() === currentDate.getMonth() &&
+            selectedDate.getFullYear() === currentDate.getFullYear();
           const isToday =
             new Date().getDate() === day &&
-            new Date().getMonth() === currentDate.getMonth();
+            new Date().getMonth() === currentDate.getMonth() &&
+            new Date().getFullYear() === currentDate.getFullYear();
+          const taskCount = typeof getTaskCountForDay === "function" ? getTaskCountForDay(day) : 0;
           return (
             <button
               key={day}
+              type="button"
               onClick={() => {
                 const newDate = new Date(currentDate);
                 newDate.setDate(day);
                 onSelectDate(newDate);
               }}
               className={[
-                "rounded-lg py-2 text-sm transition",
+                "flex min-h-[2.75rem] flex-col items-center justify-center rounded-lg py-1 text-sm transition",
                 isSelected
                   ? "bg-emerald-600 text-white"
                   : isToday
@@ -163,7 +176,17 @@ function CalendarWidget({
                     : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-emerald-800/30",
               ].join(" ")}
             >
-              {day}
+              <span>{day}</span>
+              {taskCount > 0 ? (
+                <span
+                  className={[
+                    "mt-0.5 min-w-[1.15rem] rounded-full px-1 text-[10px] font-bold leading-4",
+                    isSelected ? "bg-white/25 text-white" : "bg-emerald-600 text-white dark:bg-emerald-500",
+                  ].join(" ")}
+                >
+                  {taskCount > 9 ? "9+" : taskCount}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -185,7 +208,7 @@ function TaskModal({
   isOpen: boolean;
   onClose: () => void;
   task: Task | null;
-  onSave: (task: Partial<Task>) => void;
+  onSave: (task: Partial<Task>) => void | Promise<void>;
   properties: Array<{ id: string; name: string }>;
   units: Array<{ id: string; property_id: string | null; label: string }>;
   contacts: Array<{ id: string; name: string; type: "tenant" | "owner" | "other" }>;
@@ -203,6 +226,14 @@ function TaskModal({
     allDay: true,
   });
 
+  const [recurrence, setRecurrence] = useState<"none" | "daily" | "weekly" | "monthly" | "quarterly" | "yearly">("none");
+  const [linkedDocIds, setLinkedDocIds] = useState<string[]>([]);
+  const [propertyDocs, setPropertyDocs] = useState<Array<{ id: string; file_name: string; public_url: string | null }>>([]);
+  const [pendingBefore, setPendingBefore] = useState<File[]>([]);
+  const [pendingAfter, setPendingAfter] = useState<File[]>([]);
+  const beforeInputRef = useRef<HTMLInputElement>(null);
+  const afterInputRef = useRef<HTMLInputElement>(null);
+
   React.useEffect(() => {
     if (task) {
       setFormData({
@@ -217,7 +248,16 @@ function TaskModal({
         status: task.status,
         priority: task.priority,
         allDay: task.allDay ?? true,
+        extra: task.extra,
       });
+      {
+        const r = task.extra?.recurrence;
+        const allowed: Array<typeof recurrence> = ["none", "daily", "weekly", "monthly", "quarterly", "yearly"];
+        setRecurrence(allowed.includes(r as (typeof recurrence)) ? (r as typeof recurrence) : "none");
+      }
+      setLinkedDocIds([...(task.extra?.linked_property_document_ids ?? [])]);
+      setPendingBefore([]);
+      setPendingAfter([]);
     } else {
       setFormData({
         title: "",
@@ -231,8 +271,66 @@ function TaskModal({
         priority: "medium",
         allDay: true,
       });
+      setRecurrence("none");
+      setLinkedDocIds([]);
+      setPendingBefore([]);
+      setPendingAfter([]);
     }
   }, [task, isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const pid = formData.propertyId;
+    if (!pid) {
+      setPropertyDocs([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/documents?property_id=${encodeURIComponent(pid)}`);
+        const d = r.ok ? await r.json() : [];
+        if (!cancelled) setPropertyDocs(Array.isArray(d) ? d : []);
+      } catch {
+        if (!cancelled) setPropertyDocs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, formData.propertyId]);
+
+  const uploadTaskFiles = async (files: File[], propertyId: string | null | undefined) => {
+    const out: Array<{ id: string; url: string; name: string }> = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (propertyId) fd.append("property_id", propertyId);
+      const res = await fetch("/api/documents", { method: "POST", body: fd });
+      if (!res.ok) continue;
+      const doc = await res.json();
+      if (doc?.id && doc?.public_url) {
+        out.push({ id: String(doc.id), url: String(doc.public_url), name: String(doc.file_name || file.name) });
+      }
+    }
+    return out;
+  };
+
+  const handleModalSave = async () => {
+    const uploadedBefore = await uploadTaskFiles(pendingBefore, formData.propertyId ?? undefined);
+    const uploadedAfter = await uploadTaskFiles(pendingAfter, formData.propertyId ?? undefined);
+    const prevBefore = task?.extra?.attachments_before ?? [];
+    const prevAfter = task?.extra?.attachments_after ?? [];
+    const extra: Task["extra"] = {
+      recurrence,
+      attachments_before: [...prevBefore, ...uploadedBefore],
+      attachments_after: [...prevAfter, ...uploadedAfter],
+      linked_property_document_ids: linkedDocIds.length ? linkedDocIds : undefined,
+    };
+    await onSave({ ...formData, extra });
+    setPendingBefore([]);
+    setPendingAfter([]);
+  };
 
   if (!isOpen) return null;
 
@@ -339,13 +437,14 @@ function TaskModal({
               </label>
               <select
                 value={formData.propertyId || ""}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setLinkedDocIds([]);
                   setFormData({
                     ...formData,
                     propertyId: e.target.value ? e.target.value : null,
                     unitId: null,
-                  })
-                }
+                  });
+                }}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#132a1f] dark:text-white"
               >
                 <option value="">اختر</option>
@@ -395,6 +494,28 @@ function TaskModal({
             </select>
           </div>
 
+          {/* Recurring (مهام ثابتة) */}
+          <div className="rounded-lg border border-gray-200 p-4 dark:border-emerald-800/40 dark:bg-[#132a1f]/50">
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">مهام ثابتة (تتكرر)</label>
+            <select
+              value={recurrence}
+              onChange={(e) =>
+                setRecurrence(e.target.value as "none" | "daily" | "weekly" | "monthly" | "quarterly" | "yearly")
+              }
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#132a1f] dark:text-white"
+            >
+              <option value="none">لا تكرار</option>
+              <option value="daily">يومي</option>
+              <option value="weekly">أسبوعي</option>
+              <option value="monthly">شهري</option>
+              <option value="quarterly">ربع سنوي</option>
+              <option value="yearly">سنوي</option>
+            </select>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              يُحفظ تكرار المهمة مع تاريخ الاستحقاق؛ يمكن لاحقاً ربطها بتنبيهات أو توليد نسخ تلقائية.
+            </p>
+          </div>
+
           {/* Priority & Cost */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -438,16 +559,126 @@ function TaskModal({
             </div>
           </div>
 
-          {/* Attachments */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              إرفاق الملفات
-            </label>
-            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center dark:border-emerald-800/50">
-              <Upload className="mx-auto h-8 w-8 text-gray-400" />
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                إرفاق الملفات
-              </p>
+          {/* مرفقات العمارة — existing property documents */}
+          {formData.propertyId ? (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                مرفقات العمارة (مستندات مسجّلة للعقار)
+              </label>
+              {propertyDocs.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-xs text-gray-500 dark:border-emerald-800/50 dark:text-gray-400">
+                  لا توجد مستندات مرفوعة لهذا العقار بعد. يمكنك رفعها من صفحة المستندات.
+                </p>
+              ) : (
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-3 dark:border-emerald-800/40">
+                  {propertyDocs.map((doc) => (
+                    <label key={doc.id} className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-emerald-600"
+                        checked={linkedDocIds.includes(doc.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setLinkedDocIds((prev) => [...prev, doc.id]);
+                          else setLinkedDocIds((prev) => prev.filter((x) => x !== doc.id));
+                        }}
+                      />
+                      <span className="truncate">{doc.file_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* Before / After attachments */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">مرفقات قبل</label>
+              <input
+                ref={beforeInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  setPendingBefore((p) => [...p, ...Array.from(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => beforeInputRef.current?.click()}
+                className="w-full rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-600 transition hover:border-emerald-500 hover:bg-emerald-50/50 dark:border-emerald-800/50 dark:text-gray-300 dark:hover:bg-emerald-900/20"
+              >
+                <Upload className="mx-auto h-6 w-6 text-gray-400" />
+                <span className="mt-1 block">إضافة ملفات (قبل)</span>
+              </button>
+              {pendingBefore.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  {pendingBefore.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{f.name}</span>
+                      <button type="button" className="text-red-600 hover:underline" onClick={() => setPendingBefore((p) => p.filter((_, j) => j !== i))}>
+                        حذف
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {(task?.extra?.attachments_before?.length ?? 0) > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {task!.extra!.attachments_before!.map((a, i) => (
+                    <li key={`saved-b-${i}`}>
+                      <a href={a.url} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">
+                        {a.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">مرفقات بعد</label>
+              <input
+                ref={afterInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  setPendingAfter((p) => [...p, ...Array.from(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => afterInputRef.current?.click()}
+                className="w-full rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-600 transition hover:border-emerald-500 hover:bg-emerald-50/50 dark:border-emerald-800/50 dark:text-gray-300 dark:hover:bg-emerald-900/20"
+              >
+                <Upload className="mx-auto h-6 w-6 text-gray-400" />
+                <span className="mt-1 block">إضافة ملفات (بعد)</span>
+              </button>
+              {pendingAfter.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  {pendingAfter.map((f, i) => (
+                    <li key={`${f.name}-a-${i}`} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{f.name}</span>
+                      <button type="button" className="text-red-600 hover:underline" onClick={() => setPendingAfter((p) => p.filter((_, j) => j !== i))}>
+                        حذف
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {(task?.extra?.attachments_after?.length ?? 0) > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {task!.extra!.attachments_after!.map((a, i) => (
+                    <li key={`saved-a-${i}`}>
+                      <a href={a.url} target="_blank" rel="noreferrer" className="text-emerald-700 underline dark:text-emerald-400">
+                        {a.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </div>
         </div>
@@ -455,7 +686,8 @@ function TaskModal({
         {/* Actions */}
         <div className="mt-6 flex gap-3">
           <button
-            onClick={() => onSave(formData)}
+            type="button"
+            onClick={() => void handleModalSave()}
             className="flex-1 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800"
           >
             {task ? "تحديث" : "إضافة"}
@@ -551,8 +783,8 @@ export default function TasksPage() {
             id: String(t.id),
             title: String(t.title ?? ""),
             description: String(t.description ?? ""),
-            date: t.due_date ? String(t.due_date) : "",
-            dateHijri: t.due_date_hijri ? String(t.due_date_hijri) : t.due_date ? hijriYmdFromGregorianYmd(String(t.due_date)) : "",
+            date: t.due_date ? String(t.due_date).slice(0, 10).replace(/-/g, "/") : "",
+            dateHijri: t.due_date_hijri ? String(t.due_date_hijri) : t.due_date ? hijriYmdFromGregorianYmd(String(t.due_date).slice(0, 10)) : "",
             propertyId: t.property_id ? String(t.property_id) : null,
             unitId: t.unit_id ? String(t.unit_id) : null,
             contactId: t.contact_id ? String(t.contact_id) : null,
@@ -566,6 +798,7 @@ export default function TasksPage() {
             addedBy: "—",
             createdAt: t.created_at ? String(t.created_at) : "",
             allDay: true,
+            extra: t.extra && typeof t.extra === "object" ? (t.extra as Task["extra"]) : undefined,
           }))
         );
       } finally {
@@ -585,7 +818,15 @@ export default function TasksPage() {
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
-  // Filter tasks
+  const getTaskCountForDay = useCallback(
+    (day: number) => {
+      const d = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+      return tasks.reduce((n, t) => n + (occursOnCalendarDay(t, d) ? 1 : 0), 0);
+    },
+    [tasks, currentDate],
+  );
+
+  // Filter tasks (recurring مهام ثابتة match today/tomorrow on every occurrence)
   const filteredTasks = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -593,21 +834,11 @@ export default function TasksPage() {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     return tasks.filter((task) => {
-      const taskDate = new Date(task.date.replace(/\//g, "-"));
-
       switch (activeFilter) {
         case "today":
-          return (
-            taskDate.getDate() === today.getDate() &&
-            taskDate.getMonth() === today.getMonth() &&
-            taskDate.getFullYear() === today.getFullYear()
-          );
+          return occursOnCalendarDay(task, today);
         case "tomorrow":
-          return (
-            taskDate.getDate() === tomorrow.getDate() &&
-            taskDate.getMonth() === tomorrow.getMonth() &&
-            taskDate.getFullYear() === tomorrow.getFullYear()
-          );
+          return occursOnCalendarDay(task, tomorrow);
         case "created":
           return task.status !== "completed";
         case "all":
@@ -626,28 +857,24 @@ export default function TasksPage() {
 
     return {
       all: tasks.length,
-      today: tasks.filter((t) => {
-        const d = new Date(t.date.replace(/\//g, "-"));
-        return (
-          d.getDate() === today.getDate() &&
-          d.getMonth() === today.getMonth() &&
-          d.getFullYear() === today.getFullYear()
-        );
-      }).length,
-      tomorrow: tasks.filter((t) => {
-        const d = new Date(t.date.replace(/\//g, "-"));
-        return (
-          d.getDate() === tomorrow.getDate() &&
-          d.getMonth() === tomorrow.getMonth() &&
-          d.getFullYear() === tomorrow.getFullYear()
-        );
-      }).length,
+      today: tasks.filter((t) => occursOnCalendarDay(t, today)).length,
+      tomorrow: tasks.filter((t) => occursOnCalendarDay(t, tomorrow)).length,
       created: tasks.filter((t) => t.status !== "completed").length,
     };
   }, [tasks]);
 
+  const toDueYmd = (dateStr: string | undefined | null) => {
+    if (!dateStr) return null;
+    const s = String(dateStr).replace(/\//g, "-").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  };
+
   const handleSaveTask = (taskData: Partial<Task>) => {
     void (async () => {
+      const due = toDueYmd(taskData.date);
+      const hijri = due ? hijriYmdFromGregorianYmd(due) : null;
+      const extraPayload = taskData.extra && typeof taskData.extra === "object" ? taskData.extra : null;
+
       if (editingTask) {
         const res = await fetch(`/api/tasks/${editingTask.id}`, {
           method: "PUT",
@@ -655,16 +882,27 @@ export default function TasksPage() {
           body: JSON.stringify({
             title: taskData.title,
             description: taskData.description ?? null,
-            due_date: taskData.date || null,
-            due_date_hijri: taskData.date ? hijriYmdFromGregorianYmd(taskData.date) : null,
+            due_date: due,
+            due_date_hijri: hijri,
             status: taskData.status ?? "pending",
             priority: taskData.priority ?? "medium",
             cost_sar: taskData.cost ?? 0,
+            property_id: taskData.propertyId ?? null,
+            unit_id: taskData.unitId ?? null,
+            contact_id: taskData.contactId ?? null,
+            extra: extraPayload,
           }),
         });
         if (res.ok) {
-          const nextHijri = taskData.date ? hijriYmdFromGregorianYmd(taskData.date) : "";
-          setTasks(tasks.map((t) => (t.id === editingTask.id ? { ...t, ...taskData, dateHijri: nextHijri } : t)));
+          const nextHijri = hijri ?? "";
+          const displayDate = due ? due.replace(/-/g, "/") : "";
+          setTasks(
+            tasks.map((t) =>
+              t.id === editingTask.id
+                ? { ...t, ...taskData, date: displayDate, dateHijri: nextHijri, extra: extraPayload ?? undefined }
+                : t,
+            ),
+          );
         }
       } else {
         const res = await fetch("/api/tasks", {
@@ -673,24 +911,26 @@ export default function TasksPage() {
           body: JSON.stringify({
             title: taskData.title ?? "مهمة جديدة",
             description: taskData.description ?? null,
-            due_date: taskData.date || null,
-            due_date_hijri: taskData.date ? hijriYmdFromGregorianYmd(taskData.date) : null,
+            due_date: due,
+            due_date_hijri: hijri,
             status: "pending",
             priority: taskData.priority ?? "medium",
             cost_sar: taskData.cost ?? 0,
             property_id: taskData.propertyId ?? null,
             unit_id: taskData.unitId ?? null,
             contact_id: taskData.contactId ?? null,
+            extra: extraPayload,
           }),
         });
         if (res.ok) {
           const inserted = await res.json();
+          const idue = inserted.due_date ? String(inserted.due_date).slice(0, 10) : "";
           const newTask: Task = {
             id: String(inserted.id),
             title: String(inserted.title ?? ""),
             description: String(inserted.description ?? ""),
-            date: inserted.due_date ? String(inserted.due_date) : "",
-            dateHijri: inserted.due_date_hijri ? String(inserted.due_date_hijri) : inserted.due_date ? hijriYmdFromGregorianYmd(String(inserted.due_date)) : "",
+            date: idue ? idue.replace(/-/g, "/") : "",
+            dateHijri: inserted.due_date_hijri ? String(inserted.due_date_hijri) : idue ? hijriYmdFromGregorianYmd(idue) : "",
             propertyId: inserted.property_id ? String(inserted.property_id) : null,
             unitId: inserted.unit_id ? String(inserted.unit_id) : null,
             contactId: inserted.contact_id ? String(inserted.contact_id) : null,
@@ -704,6 +944,7 @@ export default function TasksPage() {
             addedBy: "—",
             createdAt: inserted.created_at ? String(inserted.created_at) : "",
             allDay: true,
+            extra: inserted.extra && typeof inserted.extra === "object" ? (inserted.extra as Task["extra"]) : extraPayload ?? undefined,
           };
           setTasks([newTask, ...tasks]);
         }
@@ -802,7 +1043,11 @@ export default function TasksPage() {
             <CalendarWidget
               currentDate={currentDate}
               selectedDate={selectedDate}
-              onSelectDate={setCurrentDate}
+              onSelectDate={(d) => {
+                setCurrentDate(d);
+                setSelectedDate(d);
+              }}
+              getTaskCountForDay={getTaskCountForDay}
             />
           </div>
 

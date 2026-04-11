@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
 
 export async function GET(req: NextRequest) {
   try {
@@ -128,13 +129,31 @@ export async function GET(req: NextRequest) {
       [ownerId, monthStart, monthEnd]
     );
 
-    // Calendar marks
-    const tasks = monthStr
+    // Calendar marks — include recurring (مهام ثابتة) on every matching day in the month
+    const tasksRaw = monthStr
       ? await ds.query(
-          `SELECT id, title, due_date FROM tasks WHERE owner_id = $1 AND due_date >= $2 AND due_date < $3`,
+          `SELECT id, title, due_date, extra FROM tasks WHERE owner_id = $1 AND due_date IS NOT NULL AND due_date < $3`,
           [ownerId, monthStart, monthEnd]
         )
       : [];
+    const tasks: Array<{ id: string; title: string; due_date: string }> = [];
+    if (monthStr) {
+      for (const t of tasksRaw as any[]) {
+        const ymds = expandOccurrencesInRange(
+          t.due_date ? String(t.due_date).slice(0, 10) : null,
+          t.extra,
+          monthStart.slice(0, 10),
+          monthEnd.slice(0, 10),
+        );
+        const seen = new Set<string>();
+        for (const ymd of ymds) {
+          const k = `${t.id}:${ymd}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          tasks.push({ id: String(t.id), title: String(t.title ?? "مهمة"), due_date: ymd });
+        }
+      }
+    }
 
     const revenues = monthStr
       ? await ds.query(

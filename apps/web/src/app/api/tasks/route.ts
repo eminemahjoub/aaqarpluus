@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       property_id: body.property_id ?? null,
       unit_id: body.unit_id ?? null,
       contact_id: body.contact_id ?? null,
+      extra: body.extra && typeof body.extra === "object" ? body.extra : null,
     } as any);
 
     await repo.save(task);

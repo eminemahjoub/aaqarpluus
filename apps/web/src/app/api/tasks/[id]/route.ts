@@ -16,7 +16,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!task) return unauthorized();
 
     const updates: Record<string, any> = {};
-    const fields = ["title", "description", "due_date", "due_date_hijri", "status", "priority", "cost_sar", "property_id", "unit_id", "contact_id"];
+    const fields = [
+      "title",
+      "description",
+      "due_date",
+      "due_date_hijri",
+      "status",
+      "priority",
+      "cost_sar",
+      "property_id",
+      "unit_id",
+      "contact_id",
+      "extra",
+    ];
     for (const f of fields) {
       if (body[f] !== undefined) updates[f] = body[f];
     }
