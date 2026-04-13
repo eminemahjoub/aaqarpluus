@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,10 +13,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
-    const task = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const task = Array.isArray(propertyIds)
+      ? await repo.findOne({ where: { id } as any })
+      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
     if (!task) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((task as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    }
 
     const updates: Record<string, any> = {};
     const fields = [
@@ -62,10 +67,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
-    const task = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const task = Array.isArray(propertyIds)
+      ? await repo.findOne({ where: { id } as any })
+      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
     if (!task) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((task as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    }
 
     await repo.delete(id);
     return ok({ success: true });

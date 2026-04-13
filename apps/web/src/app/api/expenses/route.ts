@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,13 +14,18 @@ export async function GET(req: NextRequest) {
     const dateTo = searchParams.get("date_to");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     let qb = ds
       .getRepository("Expense")
       .createQueryBuilder("e")
-      .where("e.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("e.paid_at", "DESC");
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      qb = qb.where("e.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb = qb.where("e.owner_id = :ownerId", { ownerId: user.userId });
+    }
 
     if (propertyId) qb = qb.andWhere("e.property_id = :propertyId", { propertyId });
     if (dateFrom) qb = qb.andWhere("e.paid_at >= :dateFrom", { dateFrom });
@@ -40,9 +45,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const ds = await getDataSource();
     const repo = ds.getRepository("Expense");
-    const ownerId = String(body.owner_id ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    const propertyId = body.property_id ? String(body.property_id) : null;
+    if (!propertyId) return unauthorized();
+    const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
     if (!can) return unauthorized();
+
+    const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+    if (!prop) return unauthorized();
+    const ownerId = String((prop as any).owner_id);
 
     const expense = repo.create({
       owner_id: ownerId,

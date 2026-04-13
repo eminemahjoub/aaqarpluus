@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { unlink } from "fs/promises";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,10 +13,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Document");
 
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
-    const doc = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const doc = Array.isArray(propertyIds)
+      ? await repo.findOne({ where: { id } as any })
+      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
     if (!doc) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((doc as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    }
 
     // Remove physical file if local
     if ((doc as any).object_path && (doc as any).bucket === "local") {

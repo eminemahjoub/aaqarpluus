@@ -3,7 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,13 +15,19 @@ export async function GET(req: NextRequest) {
     const contractId = searchParams.get("contract_id");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     const qb = ds
       .getRepository("Document")
       .createQueryBuilder("d")
       .leftJoinAndSelect("d.property", "property")
-      .where("d.owner_id IN (:...ownerIds)", { ownerIds });
+      .where("1=1");
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      qb.andWhere("d.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb.andWhere("d.owner_id = :ownerId", { ownerId: user.userId });
+    }
 
     if (propertyId) qb.andWhere("d.property_id = :propertyId", { propertyId });
     if (contractId) qb.andWhere("d.contract_id = :contractId", { contractId });
@@ -52,9 +58,13 @@ export async function POST(req: NextRequest) {
     }
 
     const ds = await getDataSource();
-    const ownerId = String(formData.get("owner_id") ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    const pid = propertyId ? String(propertyId) : null;
+    if (!pid) return unauthorized();
+    const can = await assertAgencyCanAccessProperty(ds, user, pid);
     if (!can) return unauthorized();
+    const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
+    if (!prop) return unauthorized();
+    const ownerId = String((prop as any).owner_id);
 
     const uploadsDir = join(process.cwd(), "public", "uploads", ownerId);
     await mkdir(uploadsDir, { recursive: true });

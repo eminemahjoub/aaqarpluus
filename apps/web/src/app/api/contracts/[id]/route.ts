@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,8 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
 
     const contract = await ds
       .getRepository("Contract")
@@ -20,10 +19,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .leftJoinAndSelect("c.unit", "unit")
       .leftJoinAndSelect("c.property", "property")
       .where("c.id = :id", { id })
-      .andWhere("c.owner_id IN (:...ownerIds)", { ownerIds })
       .getOne();
 
     if (!contract) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((contract as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    } else if (String((contract as any).owner_id) !== String(user.userId)) {
+      return unauthorized();
+    }
     return ok(contract);
   } catch (err) {
     return serverError(err);
@@ -40,10 +44,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Contract");
 
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
-    const contract = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const contract = Array.isArray(propertyIds)
+      ? await repo.findOne({ where: { id } as any })
+      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
     if (!contract) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((contract as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    }
 
     const updates: Record<string, any> = {};
     const fields = ["status", "end_date", "extra", "rent_total_sar", "rent_amount_sar", "notes", "payment_frequency"];
@@ -87,10 +96,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Contract");
 
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
-    const contract = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const contract = Array.isArray(propertyIds)
+      ? await repo.findOne({ where: { id } as any })
+      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
     if (!contract) return unauthorized();
+    if (Array.isArray(propertyIds)) {
+      const pid = String((contract as any).property_id ?? "");
+      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
+    }
 
     // Delete associated payments first
     await ds.getRepository("ContractPayment").delete({ contract_id: id } as any);

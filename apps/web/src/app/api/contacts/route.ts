@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,12 +12,27 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+
+    // For agencies: only contacts linked to contracts on accessible properties.
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      const rows = await ds.query(
+        `SELECT DISTINCT c.*
+         FROM contacts c
+         JOIN contracts ct ON ct.contact_id = c.id
+         WHERE ct.property_id = ANY($1)
+         ORDER BY c.created_at DESC`,
+        [propertyIds]
+      );
+      const filtered = type ? (rows ?? []).filter((c: any) => String(c.type ?? "") === String(type)) : rows;
+      return ok(filtered ?? []);
+    }
+
     let qb = ds
       .getRepository("Contact")
       .createQueryBuilder("c")
-      .where("c.owner_id IN (:...ownerIds)", { ownerIds })
+      .where("c.owner_id = :ownerId", { ownerId: user.userId })
       .orderBy("c.created_at", "DESC");
 
     if (type) qb = qb.andWhere("c.type = :type", { type });
@@ -37,11 +52,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     if (!body.name?.trim()) return badRequest("الاسم مطلوب");
 
+    if (String(user.userType ?? "") === "agency") return unauthorized();
+
     const ds = await getDataSource();
     const repo = ds.getRepository("Contact");
-    const ownerId = String(body.owner_id ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
-    if (!can) return unauthorized();
+    const ownerId = String(user.userId);
 
     const contact = repo.create({
       owner_id: ownerId,

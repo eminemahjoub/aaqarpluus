@@ -30,6 +30,7 @@ const ownerMenuItems = [
   { href: "/dashboard/tasks", label: "المهام", icon: ClipboardList },
   { href: "/dashboard/contacts", label: "جهات الاتصال", icon: Users },
   { href: "/dashboard/documents", label: "المستندات", icon: FolderOpen },
+  { href: "/dashboard/agencies", label: "المكاتب", icon: Users },
   { href: "/dashboard/reports", label: "التقارير", icon: BarChart3 },
   { href: "/dashboard/profile", label: "الملف الشخصي", icon: UserCircle },
   { href: "/dashboard/contact", label: "تواصل معنا", icon: Phone },
@@ -87,10 +88,11 @@ export function DashboardSidebar({
         )}
       </div>
 
-      {/* Collapse Toggle Button (Desktop only) */}
+      {/* Collapse Toggle Button */}
       <button
+        type="button"
         onClick={onToggleCollapse}
-        className="hidden lg:flex items-center justify-center py-2 border-b border-white/10 text-white/60 hover:text-white hover:bg-white/5 transition"
+        className="flex items-center justify-center py-2 border-b border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition"
         title={collapsed ? "توسيع القائمة" : "طي القائمة"}
       >
         {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -112,7 +114,7 @@ export function DashboardSidebar({
               className={[
                 "group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200",
                 isActive
-                  ? "bg-accent/20 text-accent shadow-sm"
+                  ? "bg-emerald-900/30 text-[#f5c542] shadow-sm"
                   : "text-white/90 hover:bg-white/10 hover:text-white",
                 collapsed ? "justify-center px-2" : "",
               ].join(" ")}
@@ -122,7 +124,7 @@ export function DashboardSidebar({
                 className={[
                   "flex h-9 w-9 items-center justify-center rounded-lg transition-colors flex-shrink-0",
                   isActive
-                    ? "bg-accent text-white"
+                    ? "bg-[#f5c542] text-[#1B5E3C]"
                     : "bg-white/10 text-white/80 group-hover:bg-white/20 group-hover:text-white",
                 ].join(" ")}
               >
@@ -131,7 +133,7 @@ export function DashboardSidebar({
               {!collapsed && (
                 <>
                   <span className="flex-1">{item.label}</span>
-                  {isActive && <ChevronLeft className="h-4 w-4 text-accent" />}
+                  {isActive && <ChevronLeft className="h-4 w-4 text-[#f5c542]" />}
                 </>
               )}
             </Link>

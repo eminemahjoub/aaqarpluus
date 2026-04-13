@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,10 +17,20 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("payment_status") ?? searchParams.get("status") ?? searchParams.get("contract_status");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    if (Array.isArray(propertyIds) && propertyIds.length === 0) return ok([]);
+    const ownerIds = Array.isArray(propertyIds)
+      ? Array.from(
+          new Set(
+            (await ds.query("SELECT DISTINCT owner_id FROM properties WHERE id = ANY($1)", [propertyIds]))
+              .map((r: any) => String(r.owner_id))
+              .filter(Boolean)
+          )
+        )
+      : [String(user.userId)];
 
     if (type === "income") {
+      const extraPropertyFilter = propertyIds ? "AND r.property_id = ANY($4)" : "";
       const rows = await ds.query(
         `
         SELECT
@@ -33,17 +43,20 @@ export async function GET(req: NextRequest) {
           ${dateFrom ? "AND r.received_at >= $2" : ""}
           ${dateTo ? `AND r.received_at <= $${dateFrom ? 3 : 2}` : ""}
           ${propertyId ? `AND r.property_id = $${[dateFrom, dateTo, propertyId].filter(Boolean).length}` : ""}
+          ${Array.isArray(propertyIds) ? "AND r.property_id = ANY($4)" : ""}
         GROUP BY DATE_TRUNC('month', r.received_at)
         ORDER BY month DESC
         LIMIT 24
         `,
-        [ownerIds, ...[dateFrom, dateTo, propertyId].filter(Boolean)]
+        Array.isArray(propertyIds)
+          ? [ownerIds, ...[dateFrom, dateTo, propertyId].filter(Boolean), propertyIds]
+          : [ownerIds, ...[dateFrom, dateTo, propertyId].filter(Boolean)]
       );
       return ok(rows);
     }
 
     if (type === "payments") {
-      const params: any[] = [ownerIds];
+      const params: any[] = [Array.isArray(propertyIds) ? propertyIds : ownerIds];
       let idx = 2;
       let conditions = "";
       if (dateFrom) { conditions += ` AND cp.due_date >= $${idx++}`; params.push(dateFrom); }
@@ -66,7 +79,9 @@ export async function GET(req: NextRequest) {
         LEFT JOIN properties p ON p.id = c.property_id
         LEFT JOIN units u ON u.id = c.unit_id
         LEFT JOIN contacts ct ON ct.id = c.contact_id
-        WHERE c.owner_id = ANY($1) ${conditions}
+        WHERE ${
+          Array.isArray(propertyIds) ? "c.property_id = ANY($1)" : "c.owner_id = ANY($1)"
+        } ${conditions}
         ORDER BY cp.due_date ASC
         LIMIT 2000
         `,
@@ -76,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "contracts") {
-      const params: any[] = [ownerIds];
+      const params: any[] = [Array.isArray(propertyIds) ? propertyIds : ownerIds];
       let idx = 2;
       let conditions = "";
       if (dateFrom) { conditions += ` AND c.start_date >= $${idx++}`; params.push(dateFrom); }
@@ -97,7 +112,9 @@ export async function GET(req: NextRequest) {
         LEFT JOIN properties p ON p.id = c.property_id
         LEFT JOIN units u ON u.id = c.unit_id
         LEFT JOIN contacts ct ON ct.id = c.contact_id
-        WHERE c.owner_id = ANY($1) ${conditions}
+        WHERE ${
+          Array.isArray(propertyIds) ? "c.property_id = ANY($1)" : "c.owner_id = ANY($1)"
+        } ${conditions}
         ORDER BY c.start_date DESC
         LIMIT 2000
         `,

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,14 +15,20 @@ export async function GET(req: NextRequest) {
     const dateTo = searchParams.get("date_to");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
 
     // Join through contracts to ensure ownership
     let qb = ds
       .getRepository("ContractPayment")
       .createQueryBuilder("cp")
-      .innerJoin("Contract", "c", "c.id = cp.contract_id AND c.owner_id IN (:...ownerIds)", { ownerIds })
+      .innerJoin(
+        "Contract",
+        "c",
+        Array.isArray(propertyIds)
+          ? "c.id = cp.contract_id AND c.property_id IN (:...propertyIds)"
+          : "c.id = cp.contract_id AND c.owner_id = :ownerId",
+        Array.isArray(propertyIds) ? { propertyIds } : { ownerId: user.userId }
+      )
       .orderBy("cp.due_date", "ASC");
 
     if (contractId) qb = qb.andWhere("cp.contract_id = :contractId", { contractId });

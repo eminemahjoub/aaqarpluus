@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,16 +17,21 @@ export async function GET(req: NextRequest) {
     const contactId = searchParams.get("contact_id");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     let qb = ds
       .getRepository("Contract")
       .createQueryBuilder("c")
       .leftJoinAndSelect("c.contact", "contact")
       .leftJoinAndSelect("c.unit", "unit")
       .leftJoinAndSelect("c.property", "property")
-      .where("c.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("c.start_date", "DESC");
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      qb = qb.where("c.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb = qb.where("c.owner_id = :ownerId", { ownerId: user.userId });
+    }
 
     if (propertyId) qb = qb.andWhere("c.property_id = :propertyId", { propertyId });
     if (unitId) qb = qb.andWhere("c.unit_id = :unitId", { unitId });
@@ -51,9 +56,14 @@ export async function POST(req: NextRequest) {
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Contract");
-    const ownerId = String(body.owner_id ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    const propertyId = body.property_id ? String(body.property_id) : null;
+    if (!propertyId) return badRequest("معرف العقار مطلوب");
+    const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
     if (!can) return unauthorized();
+
+    const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+    if (!prop) return badRequest("العقار غير موجود");
+    const ownerId = String((prop as any).owner_id);
 
     // Accept aliases: rent_amount/rent_total → rent_total_sar, payment_period/payment_frequency → payment_frequency
     const rentTotal = body.rent_total_sar ?? body.rent_amount ?? null;

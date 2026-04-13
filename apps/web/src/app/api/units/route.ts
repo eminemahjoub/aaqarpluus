@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,13 +12,18 @@ export async function GET(req: NextRequest) {
     const propertyId = searchParams.get("property_id");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     let qb = ds
       .getRepository("Unit")
       .createQueryBuilder("u")
-      .where("u.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("u.created_at", "ASC");
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      qb = qb.where("u.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb = qb.where("u.owner_id = :ownerId", { ownerId: user.userId });
+    }
 
     if (propertyId) qb = qb.andWhere("u.property_id = :propertyId", { propertyId });
 
@@ -40,9 +45,13 @@ export async function POST(req: NextRequest) {
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Unit");
-    const ownerId = String(body.owner_id ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    const propertyId = String(body.property_id);
+    const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
     if (!can) return unauthorized();
+
+    const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+    if (!prop) return badRequest("العقار غير موجود");
+    const ownerId = String((prop as any).owner_id);
 
     const unit = repo.create({
       owner_id: ownerId,

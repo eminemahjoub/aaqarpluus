@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
     const monthStr = searchParams.get("month"); // YYYY-MM for calendar data
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) {
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    if (Array.isArray(propertyIds) && propertyIds.length === 0) {
       return ok({
         monthly: [],
         totalUnits: 0,
@@ -29,6 +29,13 @@ export async function GET(req: NextRequest) {
     }
 
     // Monthly income & expenses
+    const ownerIds = Array.isArray(propertyIds)
+      ? Array.from(new Set((await ds.query("SELECT DISTINCT owner_id FROM properties WHERE id = ANY($1)", [propertyIds])).map((r: any) => String(r.owner_id)).filter(Boolean)))
+      : [String(user.userId)];
+
+    const propertyFilterSql = Array.isArray(propertyIds) ? " AND r.property_id = ANY($3)" : "";
+    const expensePropertyFilterSql = Array.isArray(propertyIds) ? " AND e.property_id = ANY($3)" : "";
+
     const monthlyRaw = await ds.query(
       `
       SELECT
@@ -39,6 +46,7 @@ export async function GET(req: NextRequest) {
       FROM revenues r
       WHERE r.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM r.received_at) = $2
+        ${propertyFilterSql}
       GROUP BY DATE_TRUNC('month', r.received_at)
       UNION ALL
       SELECT
@@ -49,9 +57,10 @@ export async function GET(req: NextRequest) {
       FROM expenses e
       WHERE e.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM e.paid_at) = $2
+        ${expensePropertyFilterSql}
       GROUP BY DATE_TRUNC('month', e.paid_at)
       `,
-      [ownerIds, Number(year)]
+      Array.isArray(propertyIds) ? [ownerIds, Number(year), propertyIds] : [ownerIds, Number(year)]
     );
 
     // Aggregate by month
@@ -72,9 +81,13 @@ export async function GET(req: NextRequest) {
         COUNT(*) AS total_units,
         COUNT(*) FILTER (WHERE status = 'occupied') AS occupied_units
       FROM units
-      WHERE owner_id = ANY($1)
+      WHERE ${
+        Array.isArray(propertyIds)
+          ? "property_id = ANY($1)"
+          : "owner_id = ANY($1)"
+      }
       `,
-      [ownerIds]
+      [Array.isArray(propertyIds) ? propertyIds : ownerIds]
     );
     const totalUnits = Number(occupancyRaw[0]?.total_units) || 0;
     const occupiedUnits = Number(occupancyRaw[0]?.occupied_units) || 0;
@@ -91,12 +104,16 @@ export async function GET(req: NextRequest) {
       JOIN contracts c ON c.id = cp.contract_id
       LEFT JOIN properties p ON p.id = c.property_id
       LEFT JOIN units u ON u.id = c.unit_id
-      WHERE c.owner_id = ANY($1)
+      WHERE ${
+        Array.isArray(propertyIds)
+          ? "c.property_id = ANY($1)"
+          : "c.owner_id = ANY($1)"
+      }
         AND cp.status != 'paid'
       ORDER BY cp.due_date ASC
       LIMIT 20
       `,
-      [ownerIds]
+      [Array.isArray(propertyIds) ? propertyIds : ownerIds]
     );
 
     // Get tenant names
@@ -112,8 +129,10 @@ export async function GET(req: NextRequest) {
 
     // Contract counts
     const contractCountRaw = await ds.query(
-      `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'active') AS active FROM contracts WHERE owner_id = ANY($1)`,
-      [ownerIds]
+      `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'active') AS active FROM contracts WHERE ${
+        Array.isArray(propertyIds) ? "property_id = ANY($1)" : "owner_id = ANY($1)"
+      }`,
+      [Array.isArray(propertyIds) ? propertyIds : ownerIds]
     );
     const totalContracts = Number(contractCountRaw[0]?.total) || 0;
     const activeContracts = Number(contractCountRaw[0]?.active) || 0;
@@ -134,12 +153,16 @@ export async function GET(req: NextRequest) {
       FROM contract_payments cp
       JOIN contracts c ON c.id = cp.contract_id
       LEFT JOIN contacts ct ON ct.id = c.contact_id
-      WHERE c.owner_id = ANY($1)
+      WHERE ${
+        Array.isArray(propertyIds)
+          ? "c.property_id = ANY($1)"
+          : "c.owner_id = ANY($1)"
+      }
         AND cp.due_date >= $2
         AND cp.due_date < $3
       ORDER BY cp.due_date ASC
       `,
-      [ownerIds, monthStart, monthEnd]
+      [Array.isArray(propertyIds) ? propertyIds : ownerIds, monthStart, monthEnd]
     );
 
     // Calendar marks — include recurring (مهام ثابتة) on every matching day in the month

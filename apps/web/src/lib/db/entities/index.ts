@@ -43,12 +43,26 @@ export const OfficeOwnerLinkSchema = schema({
   },
 });
 
+export const OfficePropertyLinkSchema = schema({
+  name: "OfficePropertyLink",
+  tableName: "office_property_links",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    office_id: { type: "uuid" },
+    owner_id: { type: "uuid" },
+    property_id: { type: "uuid" },
+    commission_percent: { type: "numeric", precision: 5, scale: 2, nullable: true },
+    created_at: { type: "timestamp", createDate: true },
+  },
+});
+
 export const PropertySchema = schema({
   name: "Property",
   tableName: "properties",
   columns: {
     id: { type: "uuid", primary: true, generated: "uuid" },
     owner_id: { type: "uuid" },
+    managing_office_id: { type: "uuid", nullable: true },
     name: { type: "varchar", length: 255 },
     title: { type: "varchar", length: 255, nullable: true },
     status: { type: "varchar", length: 50, default: "vacant" },
@@ -276,6 +290,7 @@ export const ExpenseSchema = schema({
     id: { type: "uuid", primary: true, generated: "uuid" },
     owner_id: { type: "uuid" },
     property_id: { type: "uuid", nullable: true },
+    related_revenue_id: { type: "uuid", nullable: true },
     type: { type: "varchar", length: 100, nullable: true },
     amount_sar: { type: "numeric", precision: 14, scale: 2 },
     paid_at: { type: "timestamp", nullable: true },

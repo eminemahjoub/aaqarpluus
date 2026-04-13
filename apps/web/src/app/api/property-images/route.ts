@@ -3,7 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,13 +17,18 @@ export async function GET(req: NextRequest) {
     const imageType = searchParams.get("image_type");
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     let qb = ds
       .getRepository("PropertyImage")
       .createQueryBuilder("pi")
-      .where("pi.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("pi.created_at", "ASC");
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      qb = qb.where("pi.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb = qb.where("pi.owner_id = :ownerId", { ownerId: user.userId });
+    }
 
     if (propertyId) qb = qb.andWhere("pi.property_id = :propertyId", { propertyId });
     if (unitId) qb = qb.andWhere("pi.unit_id = :unitId", { unitId });
@@ -52,9 +57,13 @@ export async function POST(req: NextRequest) {
     const imageType = (formData.get("image_type") as string | null) ?? "gallery";
 
     const ds = await getDataSource();
-    const ownerId = String(formData.get("owner_id") ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    const pid = propertyId ? String(propertyId) : null;
+    if (!pid) return unauthorized();
+    const can = await assertAgencyCanAccessProperty(ds, user, pid);
     if (!can) return unauthorized();
+    const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
+    if (!prop) return unauthorized();
+    const ownerId = String((prop as any).owner_id);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const ext = path.extname(file.name) || ".jpg";

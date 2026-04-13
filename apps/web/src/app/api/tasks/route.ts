@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
+import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,17 +9,24 @@ export async function GET(req: NextRequest) {
     if (!user) return unauthorized();
 
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return ok([]);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
     const tasks = await ds
       .getRepository("Task")
       .createQueryBuilder("t")
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
-      .where("t.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("t.created_at", "DESC")
       .getMany();
+
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return ok([]);
+      const filtered = (tasks ?? []).filter((t: any) => {
+        const pid = String(t.property_id ?? t.property?.id ?? "");
+        return !pid ? false : propertyIds.includes(pid);
+      });
+      return ok(filtered);
+    }
 
     return ok(tasks);
   } catch (err) {
@@ -37,9 +44,19 @@ export async function POST(req: NextRequest) {
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
-    const ownerId = String(body.owner_id ?? user.userId);
-    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
-    if (!can) return unauthorized();
+    const propertyId = body.property_id ? String(body.property_id) : null;
+    if (propertyId) {
+      const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
+      if (!can) return unauthorized();
+    }
+
+    let ownerId = String(user.userId);
+    if (String(user.userType ?? "") === "agency") {
+      if (!propertyId) return badRequest("معرف العقار مطلوب");
+      const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+      if (!prop) return badRequest("العقار غير موجود");
+      ownerId = String((prop as any).owner_id);
+    }
 
     const task = repo.create({
       owner_id: ownerId,

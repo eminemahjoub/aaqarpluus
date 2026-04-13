@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessibleOwnerIds } from "@/lib/office-scope";
+import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,14 +12,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
     const ds = await getDataSource();
     const repo = ds.getRepository("ContractPayment");
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
 
     // Verify ownership via contract join
     const payment = await ds
       .getRepository("ContractPayment")
       .createQueryBuilder("cp")
-      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id IN (:...ownerIds)", { ownerIds })
+      .innerJoin(
+        "contracts",
+        "c",
+        Array.isArray(propertyIds)
+          ? "c.id = cp.contract_id AND c.property_id IN (:...propertyIds)"
+          : "c.id = cp.contract_id AND c.owner_id = :ownerId",
+        Array.isArray(propertyIds) ? { propertyIds } : { ownerId: user.userId }
+      )
       .where("cp.id = :id", { id })
       .getOne();
 
@@ -46,13 +52,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
     const ds = await getDataSource();
-    const ownerIds = await getAccessibleOwnerIds(ds, user);
-    if (ownerIds.length === 0) return unauthorized();
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
 
     const payment = await ds
       .getRepository("ContractPayment")
       .createQueryBuilder("cp")
-      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id IN (:...ownerIds)", { ownerIds })
+      .innerJoin(
+        "contracts",
+        "c",
+        Array.isArray(propertyIds)
+          ? "c.id = cp.contract_id AND c.property_id IN (:...propertyIds)"
+          : "c.id = cp.contract_id AND c.owner_id = :ownerId",
+        Array.isArray(propertyIds) ? { propertyIds } : { ownerId: user.userId }
+      )
       .where("cp.id = :id", { id })
       .getOne();
 
