@@ -30,7 +30,7 @@ function toArabicType(db: ContactRow["type"]) {
   return "مستأجر";
 }
 
-function ContactsContent() {
+export function ContactsContent() {
   const [loading, setLoading] = React.useState(true);
   const [contacts, setContacts] = React.useState<ContactRow[]>([]);
   const [newContact, setNewContact] = React.useState({ name: "", phone: "", type: "مستأجر" });

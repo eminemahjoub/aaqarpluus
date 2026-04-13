@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
+import { getAccessibleOwnerIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,9 +12,21 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const year = searchParams.get("year") ?? String(new Date().getFullYear());
     const monthStr = searchParams.get("month"); // YYYY-MM for calendar data
-    const ownerId = user.userId;
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) {
+      return ok({
+        monthly: [],
+        totalUnits: 0,
+        occupiedUnits: 0,
+        totalContracts: 0,
+        activeContracts: 0,
+        pendingPayments: [],
+        monthPayments: [],
+        calendarData: { tasks: [], revenues: [], expenses: [], contracts: [], monthPayments: [] },
+      });
+    }
 
     // Monthly income & expenses
     const monthlyRaw = await ds.query(
@@ -24,7 +37,7 @@ export async function GET(req: NextRequest) {
         0 AS expenses_sar,
         COALESCE(SUM(r.amount_sar), 0) AS net_sar
       FROM revenues r
-      WHERE r.owner_id = $1
+      WHERE r.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM r.received_at) = $2
       GROUP BY DATE_TRUNC('month', r.received_at)
       UNION ALL
@@ -34,11 +47,11 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(e.amount_sar), 0) AS expenses_sar,
         -COALESCE(SUM(e.amount_sar), 0) AS net_sar
       FROM expenses e
-      WHERE e.owner_id = $1
+      WHERE e.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM e.paid_at) = $2
       GROUP BY DATE_TRUNC('month', e.paid_at)
       `,
-      [ownerId, Number(year)]
+      [ownerIds, Number(year)]
     );
 
     // Aggregate by month
@@ -59,9 +72,9 @@ export async function GET(req: NextRequest) {
         COUNT(*) AS total_units,
         COUNT(*) FILTER (WHERE status = 'occupied') AS occupied_units
       FROM units
-      WHERE owner_id = $1
+      WHERE owner_id = ANY($1)
       `,
-      [ownerId]
+      [ownerIds]
     );
     const totalUnits = Number(occupancyRaw[0]?.total_units) || 0;
     const occupiedUnits = Number(occupancyRaw[0]?.occupied_units) || 0;
@@ -78,12 +91,12 @@ export async function GET(req: NextRequest) {
       JOIN contracts c ON c.id = cp.contract_id
       LEFT JOIN properties p ON p.id = c.property_id
       LEFT JOIN units u ON u.id = c.unit_id
-      WHERE c.owner_id = $1
+      WHERE c.owner_id = ANY($1)
         AND cp.status != 'paid'
       ORDER BY cp.due_date ASC
       LIMIT 20
       `,
-      [ownerId]
+      [ownerIds]
     );
 
     // Get tenant names
@@ -99,8 +112,8 @@ export async function GET(req: NextRequest) {
 
     // Contract counts
     const contractCountRaw = await ds.query(
-      `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'active') AS active FROM contracts WHERE owner_id = $1`,
-      [ownerId]
+      `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'active') AS active FROM contracts WHERE owner_id = ANY($1)`,
+      [ownerIds]
     );
     const totalContracts = Number(contractCountRaw[0]?.total) || 0;
     const activeContracts = Number(contractCountRaw[0]?.active) || 0;
@@ -121,19 +134,19 @@ export async function GET(req: NextRequest) {
       FROM contract_payments cp
       JOIN contracts c ON c.id = cp.contract_id
       LEFT JOIN contacts ct ON ct.id = c.contact_id
-      WHERE c.owner_id = $1
+      WHERE c.owner_id = ANY($1)
         AND cp.due_date >= $2
         AND cp.due_date < $3
       ORDER BY cp.due_date ASC
       `,
-      [ownerId, monthStart, monthEnd]
+      [ownerIds, monthStart, monthEnd]
     );
 
     // Calendar marks — include recurring (مهام ثابتة) on every matching day in the month
     const tasksRaw = monthStr
       ? await ds.query(
-          `SELECT id, title, due_date, extra FROM tasks WHERE owner_id = $1 AND due_date IS NOT NULL AND due_date < $3`,
-          [ownerId, monthStart, monthEnd]
+          `SELECT id, title, due_date, extra FROM tasks WHERE owner_id = ANY($1) AND due_date IS NOT NULL AND due_date < $3`,
+          [ownerIds, monthStart, monthEnd]
         )
       : [];
     const tasks: Array<{ id: string; title: string; due_date: string }> = [];
@@ -157,23 +170,23 @@ export async function GET(req: NextRequest) {
 
     const revenues = monthStr
       ? await ds.query(
-          `SELECT id, type, received_at FROM revenues WHERE owner_id = $1 AND received_at >= $2 AND received_at < $3`,
-          [ownerId, monthStart, monthEnd]
+          `SELECT id, type, received_at FROM revenues WHERE owner_id = ANY($1) AND received_at >= $2 AND received_at < $3`,
+          [ownerIds, monthStart, monthEnd]
         )
       : [];
 
     const expenses = monthStr
       ? await ds.query(
-          `SELECT id, type, paid_at FROM expenses WHERE owner_id = $1 AND paid_at >= $2 AND paid_at < $3`,
-          [ownerId, monthStart, monthEnd]
+          `SELECT id, type, paid_at FROM expenses WHERE owner_id = ANY($1) AND paid_at >= $2 AND paid_at < $3`,
+          [ownerIds, monthStart, monthEnd]
         )
       : [];
 
     const contracts = monthStr
       ? await ds.query(
-          `SELECT id, start_date, end_date FROM contracts WHERE owner_id = $1
+          `SELECT id, start_date, end_date FROM contracts WHERE owner_id = ANY($1)
            AND (start_date >= $2 AND start_date < $3 OR end_date >= $2 AND end_date < $3)`,
-          [ownerId, monthStart, monthEnd]
+          [ownerIds, monthStart, monthEnd]
         )
       : [];
 

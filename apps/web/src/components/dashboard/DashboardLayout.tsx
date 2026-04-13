@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Menu, ChevronRight, ChevronLeft } from "lucide-react";
+import { Menu } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
 
 interface DashboardLayoutProps {
@@ -12,6 +12,27 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, role = "personal" }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const me = await res.json();
+        const userType = String(me?.userType ?? "");
+        const next: "owner" | "agency" | "personal" =
+          userType === "agency" ? "agency" : userType === "personal" ? "personal" : "owner";
+        if (!cancelled) setResolvedRole(next);
+      } catch {
+        // keep provided role
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-[#0a1f16]">
@@ -34,7 +55,7 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
       >
         <DashboardSidebar 
           onClose={() => setSidebarOpen(false)} 
-          role={role} 
+          role={resolvedRole} 
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
@@ -55,16 +76,6 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
               <Menu className="h-6 w-6" />
             </button>
             
-            {/* Desktop collapse button */}
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden lg:flex items-center gap-2 rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
-              title={sidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
-            >
-              {sidebarCollapsed ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-            </button>
-
             {/* Logo - Always visible in header */}
             <div className="flex items-center gap-2">
               <img 

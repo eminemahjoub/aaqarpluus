@@ -13,6 +13,7 @@ export interface JwtPayload {
   userId: string;
   email: string;
   userType: string;
+  officeId?: string | null;
 }
 
 export async function signToken(payload: JwtPayload): Promise<string> {

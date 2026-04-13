@@ -163,19 +163,14 @@ interface InvestmentRow {
   netProfit: number;
 }
 
-export default function ReportsPage() {
+export function ReportsContent() {
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
 
   if (selectedReport) {
-    return (
-      <DashboardLayout role="owner">
-        <ReportDetail reportId={selectedReport} onBack={() => setSelectedReport(null)} />
-      </DashboardLayout>
-    );
+    return <ReportDetail reportId={selectedReport} onBack={() => setSelectedReport(null)} />;
   }
 
   return (
-    <DashboardLayout role="owner">
       <div className="space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -216,6 +211,13 @@ export default function ReportsPage() {
           </p>
         </div>
       </div>
+  );
+}
+
+export default function ReportsPage() {
+  return (
+    <DashboardLayout role="owner">
+      <ReportsContent />
     </DashboardLayout>
   );
 }

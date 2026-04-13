@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,10 +17,12 @@ export async function GET(req: NextRequest) {
     const imageType = searchParams.get("image_type");
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
     let qb = ds
       .getRepository("PropertyImage")
       .createQueryBuilder("pi")
-      .where("pi.owner_id = :ownerId", { ownerId: user.userId })
+      .where("pi.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("pi.created_at", "ASC");
 
     if (propertyId) qb = qb.andWhere("pi.property_id = :propertyId", { propertyId });
@@ -48,6 +51,11 @@ export async function POST(req: NextRequest) {
     const componentId = formData.get("component_id") as string | null;
     const imageType = (formData.get("image_type") as string | null) ?? "gallery";
 
+    const ds = await getDataSource();
+    const ownerId = String(formData.get("owner_id") ?? user.userId);
+    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    if (!can) return unauthorized();
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const ext = path.extname(file.name) || ".jpg";
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
@@ -59,21 +67,20 @@ export async function POST(req: NextRequest) {
       "public",
       "uploads",
       subDir,
-      user.userId,
+      ownerId,
     );
     await mkdir(uploadDir, { recursive: true });
 
     const filePath = path.join(uploadDir, safeName);
     await writeFile(filePath, buffer);
 
-    const publicUrl = `/uploads/${subDir}/${user.userId}/${safeName}`;
+    const publicUrl = `/uploads/${subDir}/${ownerId}/${safeName}`;
     const objectPath = filePath;
 
-    const ds = await getDataSource();
     const repo = ds.getRepository("PropertyImage");
 
     const image = repo.create({
-      owner_id: user.userId,
+      owner_id: ownerId,
       property_id: propertyId || null,
       unit_id: unitId || null,
       component_id: componentId || null,

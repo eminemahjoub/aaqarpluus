@@ -12,6 +12,7 @@ import {
   BarChart3,
   UserCircle,
   Phone,
+  UserPlus,
   X,
   ChevronLeft,
   ChevronRight,
@@ -35,12 +36,14 @@ const ownerMenuItems = [
 ];
 
 const agencyMenuItems = [
-  { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
-  { href: "/dashboard/properties", label: "العقارات", icon: Building2 },
-  { href: "/dashboard/clients", label: "العملاء", icon: Users },
-  { href: "/dashboard/documents", label: "المستندات", icon: FolderOpen },
-  { href: "/dashboard/reports", label: "التقارير", icon: BarChart3 },
-  { href: "/dashboard/profile", label: "الملف الشخصي", icon: UserCircle },
+  { href: "/agency", label: "المكتب", icon: LayoutDashboard },
+  { href: "/agency/owners", label: "الملاك", icon: Users },
+  { href: "/agency/members", label: "الموظفين", icon: UserPlus },
+  { href: "/agency/properties", label: "العقارات", icon: Building2 },
+  { href: "/agency/contacts", label: "جهات الاتصال", icon: Users },
+  { href: "/agency/documents", label: "المستندات", icon: FolderOpen },
+  { href: "/agency/reports", label: "التقارير", icon: BarChart3 },
+  { href: "/agency/profile", label: "الملف الشخصي", icon: UserCircle },
 ];
 
 const personalMenuItems = [
@@ -98,7 +101,7 @@ export function DashboardSidebar({
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive =
-            item.href === "/dashboard"
+            item.href === "/dashboard" || item.href === "/agency"
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (

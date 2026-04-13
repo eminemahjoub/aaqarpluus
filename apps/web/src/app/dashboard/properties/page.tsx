@@ -2811,7 +2811,7 @@ function OfferPriceModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onCl
   );
 }
 
-function PropertiesContent() {
+export function PropertiesContent() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<DbProperty[]>([]);

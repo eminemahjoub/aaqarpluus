@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,13 +17,15 @@ export async function GET(req: NextRequest) {
     const contactId = searchParams.get("contact_id");
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
     let qb = ds
       .getRepository("Contract")
       .createQueryBuilder("c")
       .leftJoinAndSelect("c.contact", "contact")
       .leftJoinAndSelect("c.unit", "unit")
       .leftJoinAndSelect("c.property", "property")
-      .where("c.owner_id = :ownerId", { ownerId: user.userId })
+      .where("c.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("c.start_date", "DESC");
 
     if (propertyId) qb = qb.andWhere("c.property_id = :propertyId", { propertyId });
@@ -48,13 +51,16 @@ export async function POST(req: NextRequest) {
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Contract");
+    const ownerId = String(body.owner_id ?? user.userId);
+    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    if (!can) return unauthorized();
 
     // Accept aliases: rent_amount/rent_total → rent_total_sar, payment_period/payment_frequency → payment_frequency
     const rentTotal = body.rent_total_sar ?? body.rent_amount ?? null;
     const payFreq = body.payment_frequency ?? body.payment_period ?? null;
 
     const contract = repo.create({
-      owner_id: user.userId,
+      owner_id: ownerId,
       property_id: body.property_id ?? null,
       unit_id: body.unit_id ?? null,
       contact_id: body.contact_id ?? null,

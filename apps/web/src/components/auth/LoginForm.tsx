@@ -8,7 +8,7 @@ import { authInputClass, authLabelClass } from "./auth-input-classes";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = React.useState("");
+  const [identifier, setIdentifier] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -17,18 +17,19 @@ export function LoginForm() {
     e.preventDefault();
     setError(null);
 
-    const emailValue = email.trim().toLowerCase();
+    const idValue = identifier.trim();
     const pass = password.trim();
 
-    if (!emailValue) { setError("يرجى إدخال البريد الإلكتروني."); return; }
+    if (!idValue) { setError("يرجى إدخال البريد الإلكتروني أو رقم الجوال."); return; }
     if (!pass) { setError("يرجى إدخال كلمة المرور."); return; }
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailValue, password: pass }),
+        body: JSON.stringify({ identifier: idValue, password: pass }),
       });
 
       const data = await res.json();
@@ -38,8 +39,12 @@ export function LoginForm() {
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      const nextPath =
+        String(data?.user?.userType ?? "") === "agency"
+          ? "/agency"
+          : "/dashboard";
+      // Force full navigation so auth cookie is applied.
+      window.location.assign(nextPath);
     } catch {
       setError("تعذّر الاتصال بالخادم. حاول مرة أخرى.");
     } finally {
@@ -50,19 +55,17 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-5" noValidate>
       <div>
-        <label htmlFor="login-email" className={authLabelClass}>
-          البريد الإلكتروني
-        </label>
+        <label htmlFor="login-identifier" className={authLabelClass}>البريد الإلكتروني أو رقم الجوال</label>
         <input
-          id="login-email"
-          name="email"
-          type="email"
-          autoComplete="email"
+          id="login-identifier"
+          name="identifier"
+          type="text"
+          autoComplete="username"
           dir="ltr"
           className={authInputClass}
-          placeholder="name@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          placeholder="name@example.com أو 05xxxxxxxx"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
           disabled={loading}
         />
       </div>

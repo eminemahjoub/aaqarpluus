@@ -16,9 +16,18 @@ export function DashboardSidebar({ onClose }: DashboardSidebarProps) {
 
   async function handleLogout() {
     setLoggingOut(true);
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-    router.refresh();
+    const ac = new AbortController();
+    const t = window.setTimeout(() => ac.abort(), 8000);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", signal: ac.signal });
+    } catch {
+      // ignore network errors; we'll still force a reload to guest mode
+    } finally {
+      window.clearTimeout(t);
+      setLoggingOut(false);
+      onClose?.();
+      window.location.assign("/");
+    }
   }
 
   const menuItems = [

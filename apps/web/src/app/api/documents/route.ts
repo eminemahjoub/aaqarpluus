@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,11 +15,13 @@ export async function GET(req: NextRequest) {
     const contractId = searchParams.get("contract_id");
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
     const qb = ds
       .getRepository("Document")
       .createQueryBuilder("d")
       .leftJoinAndSelect("d.property", "property")
-      .where("d.owner_id = :ownerId", { ownerId: user.userId });
+      .where("d.owner_id IN (:...ownerIds)", { ownerIds });
 
     if (propertyId) qb.andWhere("d.property_id = :propertyId", { propertyId });
     if (contractId) qb.andWhere("d.contract_id = :contractId", { contractId });
@@ -48,7 +51,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const uploadsDir = join(process.cwd(), "public", "uploads", user.userId);
+    const ds = await getDataSource();
+    const ownerId = String(formData.get("owner_id") ?? user.userId);
+    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    if (!can) return unauthorized();
+
+    const uploadsDir = join(process.cwd(), "public", "uploads", ownerId);
     await mkdir(uploadsDir, { recursive: true });
 
     const timestamp = Date.now();
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filePath, buffer);
 
-    const publicUrl = `/uploads/${user.userId}/${fileName}`;
+    const publicUrl = `/uploads/${ownerId}/${fileName}`;
 
     const mime = file.type;
     let type: string;
@@ -69,11 +77,10 @@ export async function POST(req: NextRequest) {
     else if (mime.includes("word") || fileName.endsWith(".doc") || fileName.endsWith(".docx")) type = "doc";
     else type = "other";
 
-    const ds = await getDataSource();
     const repo = ds.getRepository("Document");
 
     const doc = repo.create({
-      owner_id: user.userId,
+      owner_id: ownerId,
       property_id: propertyId || null,
       file_name: file.name,
       mime_type: file.type || null,

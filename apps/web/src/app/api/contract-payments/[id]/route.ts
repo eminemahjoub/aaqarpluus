@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds } from "@/lib/office-scope";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,12 +12,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json();
     const ds = await getDataSource();
     const repo = ds.getRepository("ContractPayment");
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
 
     // Verify ownership via contract join
     const payment = await ds
       .getRepository("ContractPayment")
       .createQueryBuilder("cp")
-      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id = :ownerId", { ownerId: user.userId })
+      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id IN (:...ownerIds)", { ownerIds })
       .where("cp.id = :id", { id })
       .getOne();
 
@@ -43,11 +46,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
 
     const payment = await ds
       .getRepository("ContractPayment")
       .createQueryBuilder("cp")
-      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id = :ownerId", { ownerId: user.userId })
+      .innerJoin("contracts", "c", "c.id = cp.contract_id AND c.owner_id IN (:...ownerIds)", { ownerIds })
       .where("cp.id = :id", { id })
       .getOne();
 

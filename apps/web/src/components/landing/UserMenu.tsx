@@ -2,20 +2,20 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChevronDown, LayoutDashboard, LogOut } from "lucide-react";
 
 interface UserMenuProps {
   user: {
     email?: string;
     fullName?: string;
+    userType?: string;
   };
 }
 
 export function UserMenu({ user }: UserMenuProps) {
-  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const dashboardHref = String(user.userType ?? "") === "agency" ? "/agency" : "/dashboard";
 
   const displayName = user.fullName || user.email || "المستخدم";
   const initials = displayName
@@ -27,9 +27,19 @@ export function UserMenu({ user }: UserMenuProps) {
 
   async function handleLogout() {
     setLoggingOut(true);
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-    router.refresh();
+    setOpen(false);
+    const ac = new AbortController();
+    const t = window.setTimeout(() => ac.abort(), 8000);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", signal: ac.signal });
+    } catch {
+      // ignore network errors; we'll still force a reload to guest mode
+    } finally {
+      window.clearTimeout(t);
+      setLoggingOut(false);
+      // Full reload so Navbar re-fetches /api/auth/me and shows Login/Signup (guest).
+      window.location.assign("/");
+    }
   }
 
   return (
@@ -67,7 +77,7 @@ export function UserMenu({ user }: UserMenuProps) {
             </div>
             <div className="p-1">
               <Link
-                href="/dashboard"
+                href={dashboardHref}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
               >

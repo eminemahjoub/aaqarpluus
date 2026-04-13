@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       fullName: (user as any).full_name,
       phone: (user as any).phone,
       userType: (user as any).user_type,
+      officeId: (user as any).office_id ?? null,
     });
   } catch (err) {
     return serverError(err);
@@ -49,6 +50,7 @@ export async function PUT(req: NextRequest) {
       fullName: (user as any).full_name,
       phone: (user as any).phone,
       userType: (user as any).user_type,
+      officeId: (user as any).office_id ?? null,
     });
   } catch (err) {
     return serverError(err);

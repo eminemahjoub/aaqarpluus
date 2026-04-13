@@ -14,8 +14,32 @@ export const UserSchema = schema({
     full_name: { type: "varchar", length: 255, nullable: true },
     phone: { type: "varchar", length: 50, nullable: true },
     user_type: { type: "varchar", length: 50, default: "owner" },
+    // For agency (office) members only. Owners/personal typically have null.
+    office_id: { type: "uuid", nullable: true },
     created_at: { type: "timestamp", createDate: true },
     updated_at: { type: "timestamp", updateDate: true },
+  },
+});
+
+export const OfficeSchema = schema({
+  name: "Office",
+  tableName: "offices",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    name: { type: "varchar", length: 255 },
+    created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+});
+
+export const OfficeOwnerLinkSchema = schema({
+  name: "OfficeOwnerLink",
+  tableName: "office_owner_links",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    office_id: { type: "uuid" },
+    owner_id: { type: "uuid" },
+    created_at: { type: "timestamp", createDate: true },
   },
 });
 

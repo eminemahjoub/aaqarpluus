@@ -380,7 +380,7 @@ function DeleteConfirmationModal({
 }
 
 // Main Documents Page
-export default function DocumentsPage() {
+export function DocumentsContent() {
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -520,7 +520,6 @@ export default function DocumentsPage() {
   };
 
   return (
-    <DashboardLayout role="owner">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -741,8 +740,6 @@ export default function DocumentsPage() {
             </p>
           </div>
         )}
-      </div>
-
       {/* Modals */}
       <UploadModal
         isOpen={showUploadModal}
@@ -763,6 +760,14 @@ export default function DocumentsPage() {
         onConfirm={handleDelete}
         documentName={deletingDocument?.name || ""}
       />
+      </div>
+  );
+}
+
+export default function DocumentsPage() {
+  return (
+    <DashboardLayout role="owner">
+      <DocumentsContent />
     </DashboardLayout>
   );
 }

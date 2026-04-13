@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,10 +14,12 @@ export async function GET(req: NextRequest) {
     const dateTo = searchParams.get("date_to");
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
     let qb = ds
       .getRepository("Expense")
       .createQueryBuilder("e")
-      .where("e.owner_id = :ownerId", { ownerId: user.userId })
+      .where("e.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("e.paid_at", "DESC");
 
     if (propertyId) qb = qb.andWhere("e.property_id = :propertyId", { propertyId });
@@ -37,9 +40,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const ds = await getDataSource();
     const repo = ds.getRepository("Expense");
+    const ownerId = String(body.owner_id ?? user.userId);
+    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    if (!can) return unauthorized();
 
     const expense = repo.create({
-      owner_id: user.userId,
+      owner_id: ownerId,
       property_id: body.property_id ?? null,
       type: body.type ?? null,
       amount_sar: Number(body.amount_sar) || 0,

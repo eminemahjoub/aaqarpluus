@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds, assertAgencyCanAccessOwner } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,13 +9,15 @@ export async function GET(req: NextRequest) {
     if (!user) return unauthorized();
 
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
     const tasks = await ds
       .getRepository("Task")
       .createQueryBuilder("t")
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
-      .where("t.owner_id = :ownerId", { ownerId: user.userId })
+      .where("t.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("t.created_at", "DESC")
       .getMany();
 
@@ -34,9 +37,12 @@ export async function POST(req: NextRequest) {
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
+    const ownerId = String(body.owner_id ?? user.userId);
+    const can = await assertAgencyCanAccessOwner(ds, user, ownerId);
+    if (!can) return unauthorized();
 
     const task = repo.create({
-      owner_id: user.userId,
+      owner_id: ownerId,
       title: body.title.trim(),
       description: body.description ?? null,
       due_date: body.due_date ?? null,

@@ -9,7 +9,6 @@ import { authInputClass, authLabelClass } from "./auth-input-classes";
 const USER_TYPES = [
   { value: "owner" as const, label: "مالك" },
   { value: "agency" as const, label: "مكتب" },
-  { value: "personal" as const, label: "شخصي" },
 ];
 
 export type UserTypeValue = (typeof USER_TYPES)[number]["value"];
@@ -45,12 +44,16 @@ export function SignupForm() {
     if (!userType) { setFieldErrors({ userType: "يرجى اختيار نوع الحساب" }); return; }
     const name = fullName.trim();
     if (!name) { setError("يرجى إدخال الاسم الكامل."); return; }
+    const phoneValue = phone.trim();
+    if (!phoneValue) { setFieldErrors({ phone: "رقم الجوال مطلوب" }); return; }
     if (!email.trim()) { setError("يرجى إدخال البريد الإلكتروني."); return; }
     if (password.length < 6) { setError("كلمة المرور يجب أن تكون 6 أحرف على الأقل."); return; }
 
-    // Validate phone if provided
-    const phoneValue = phone.trim();
-    if (phoneValue && (!phoneValue.startsWith("05") || phoneValue.length !== 10)) {
+    if (!/^[0-9]+$/.test(phoneValue)) {
+      setFieldErrors({ phone: "أدخل أرقاماً فقط" });
+      return;
+    }
+    if (!phoneValue.startsWith("05") || phoneValue.length !== 10) {
       setError("رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.");
       return;
     }
@@ -59,12 +62,13 @@ export function SignupForm() {
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password,
           fullName: name,
-          phone: phoneValue ? `+966${phoneValue.substring(1)}` : null,
+          phone: `+966${phoneValue.substring(1)}`,
           userType,
         }),
       });
@@ -76,8 +80,12 @@ export function SignupForm() {
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      const nextPath =
+        String(data?.user?.userType ?? userType) === "agency"
+          ? "/agency"
+          : "/dashboard";
+      // Force full navigation so auth cookie is applied.
+      window.location.assign(nextPath);
     } catch {
       setError("تعذّر الاتصال بالخادم. حاول مرة أخرى.");
     } finally {
@@ -137,7 +145,7 @@ export function SignupForm() {
       </fieldset>
 
       <div>
-        <label htmlFor="signup-phone" className={authLabelClass}>رقم الجوال (اختياري)</label>
+        <label htmlFor="signup-phone" className={authLabelClass}>رقم الجوال</label>
         <input
           id="signup-phone"
           name="phone"
@@ -151,6 +159,7 @@ export function SignupForm() {
           onChange={(e) => handlePhoneChange(e.target.value)}
           disabled={loading}
           maxLength={10}
+          required
         />
         {fieldErrors.phone && (
           <p className="mt-1 text-sm text-red-600 dark:text-red-400">{fieldErrors.phone}</p>

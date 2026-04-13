@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds } from "@/lib/office-scope";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,7 +13,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Unit");
 
-    const unit = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
+    const unit = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
     if (!unit) return unauthorized();
 
     const updates: Record<string, any> = {};
@@ -42,7 +45,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Unit");
 
-    const unit = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
+    const unit = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
     if (!unit) return unauthorized();
 
     await repo.delete(id);

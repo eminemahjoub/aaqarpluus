@@ -7,7 +7,7 @@ function fmtSar(n: number) {
   return (Number.isFinite(n) ? n : 0).toLocaleString("ar-SA");
 }
 
-export function AgencyDashboard() {
+export function AgencyDashboard({ showHeader = true }: { showHeader?: boolean }) {
   const [loading, setLoading] = React.useState(true);
   const [stats, setStats] = React.useState({
     totalProperties: 0,
@@ -60,10 +60,12 @@ export function AgencyDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">لوحة تحكم المكتب</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">إحصائيات عامة لجميع العقارات والعقود</p>
-      </div>
+      {showHeader ? (
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">لوحة تحكم المكتب</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">إحصائيات عامة لجميع العقارات والعقود</p>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -92,13 +94,7 @@ export function AgencyDashboard() {
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-emerald-800/30 dark:bg-[#132a1f]">
-        <h3 className="mb-3 text-base font-semibold text-gray-900 dark:text-white">ملاحظة</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          لوحة تحكم المكتب تعرض إحصائيات جميع العقارات والعقود المسجلة في النظام.
-          يمكنك إدارة العقارات والعقود والعملاء من القائمة الجانبية.
-        </p>
-      </div>
+
     </div>
   );
 }

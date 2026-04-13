@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -9,10 +10,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
 
     const property = await ds
       .getRepository("Property")
-      .findOne({ where: { id, owner_id: user.userId } as any });
+      .findOne({ where: { id, owner_id: ownerIds as any } as any });
 
     if (!property) return unauthorized();
 
@@ -31,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .leftJoinAndSelect("c.contact", "contact")
       .leftJoinAndSelect("c.unit", "unit")
       .where("c.property_id = :id", { id })
-      .andWhere("c.owner_id = :ownerId", { ownerId: user.userId })
+      .andWhere("c.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("c.start_date", "DESC")
       .getMany();
 
@@ -52,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .getRepository("Revenue")
       .createQueryBuilder("r")
       .where("r.property_id = :id", { id })
-      .andWhere("r.owner_id = :ownerId", { ownerId: user.userId })
+      .andWhere("r.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("r.created_at", "DESC")
       .getMany();
 
@@ -60,7 +63,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .getRepository("Expense")
       .createQueryBuilder("e")
       .where("e.property_id = :id", { id })
-      .andWhere("e.owner_id = :ownerId", { ownerId: user.userId })
+      .andWhere("e.owner_id IN (:...ownerIds)", { ownerIds })
       .orderBy("e.created_at", "DESC")
       .getMany();
 
@@ -80,7 +83,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
 
-    const property = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
+    const property = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
     if (!property) return unauthorized();
 
     const updates: Record<string, any> = {};
@@ -132,7 +137,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
 
-    const property = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return unauthorized();
+    const property = await repo.findOne({ where: { id, owner_id: ownerIds as any } as any });
     if (!property) return unauthorized();
 
     // Delete in proper order using raw SQL to avoid FK violations

@@ -4,7 +4,7 @@ import * as React from "react";
 import { User, Phone, Mail, Building2, Edit2, Check, X } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
-function ProfileContent() {
+export function ProfileContent() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);

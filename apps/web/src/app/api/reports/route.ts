@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { getAccessibleOwnerIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,8 +16,9 @@ export async function GET(req: NextRequest) {
     const contactId = searchParams.get("contact_id");
     const status = searchParams.get("payment_status") ?? searchParams.get("status") ?? searchParams.get("contract_status");
 
-    const ownerId = user.userId;
     const ds = await getDataSource();
+    const ownerIds = await getAccessibleOwnerIds(ds, user);
+    if (ownerIds.length === 0) return ok([]);
 
     if (type === "income") {
       const rows = await ds.query(
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
           0 AS expenses_sar,
           COALESCE(SUM(r.amount_sar), 0) AS net_sar
         FROM revenues r
-        WHERE r.owner_id = $1
+        WHERE r.owner_id = ANY($1)
           ${dateFrom ? "AND r.received_at >= $2" : ""}
           ${dateTo ? `AND r.received_at <= $${dateFrom ? 3 : 2}` : ""}
           ${propertyId ? `AND r.property_id = $${[dateFrom, dateTo, propertyId].filter(Boolean).length}` : ""}
@@ -35,13 +37,13 @@ export async function GET(req: NextRequest) {
         ORDER BY month DESC
         LIMIT 24
         `,
-        [ownerId, ...[dateFrom, dateTo, propertyId].filter(Boolean)]
+        [ownerIds, ...[dateFrom, dateTo, propertyId].filter(Boolean)]
       );
       return ok(rows);
     }
 
     if (type === "payments") {
-      const params: any[] = [ownerId];
+      const params: any[] = [ownerIds];
       let idx = 2;
       let conditions = "";
       if (dateFrom) { conditions += ` AND cp.due_date >= $${idx++}`; params.push(dateFrom); }
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN properties p ON p.id = c.property_id
         LEFT JOIN units u ON u.id = c.unit_id
         LEFT JOIN contacts ct ON ct.id = c.contact_id
-        WHERE c.owner_id = $1 ${conditions}
+        WHERE c.owner_id = ANY($1) ${conditions}
         ORDER BY cp.due_date ASC
         LIMIT 2000
         `,
@@ -74,7 +76,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "contracts") {
-      const params: any[] = [ownerId];
+      const params: any[] = [ownerIds];
       let idx = 2;
       let conditions = "";
       if (dateFrom) { conditions += ` AND c.start_date >= $${idx++}`; params.push(dateFrom); }
@@ -95,7 +97,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN properties p ON p.id = c.property_id
         LEFT JOIN units u ON u.id = c.unit_id
         LEFT JOIN contacts ct ON ct.id = c.contact_id
-        WHERE c.owner_id = $1 ${conditions}
+        WHERE c.owner_id = ANY($1) ${conditions}
         ORDER BY c.start_date DESC
         LIMIT 2000
         `,
@@ -118,11 +120,11 @@ export async function GET(req: NextRequest) {
           END AS occupancy_rate_percent
         FROM properties p
         LEFT JOIN units u ON u.property_id = p.id
-        WHERE p.owner_id = $1
+        WHERE p.owner_id = ANY($1)
         GROUP BY p.id, p.name
         ORDER BY p.name ASC
         `,
-        [ownerId]
+        [ownerIds]
       );
       return ok(rows);
     }

@@ -60,7 +60,13 @@ const calendarTabs = [
   { id: "ending", label: "عقود تنتهي قريبا" },
 ];
 
-export function OwnerHomeDashboard() {
+export function OwnerHomeDashboard({
+  showHeader = true,
+  showStatsCards = true,
+}: {
+  showHeader?: boolean;
+  showStatsCards?: boolean;
+}) {
   const [activeTab, setActiveTab] = React.useState("all");
   const [monthCursor, setMonthCursor] = React.useState(() => new Date());
   const [chartMetric, setChartMetric] = React.useState<"roi" | "rent">("roi");
@@ -185,36 +191,42 @@ export function OwnerHomeDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">الرئيسية</h1>
-      </div>
+      {showHeader ? (
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">الرئيسية</h1>
+        </div>
+      ) : null}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statsData.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <div key={index} className="relative overflow-hidden rounded-xl bg-white p-5 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
-                  <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {stat.unit === "ر.س" && <span className="text-sm font-normal">ر.س </span>}
-                      {stat.value}
-                      {stat.unit === "%" && <span className="text-sm font-normal">%</span>}
-                    </span>
+      {showStatsCards ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {statsData.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={index}
+                className="relative overflow-hidden rounded-xl bg-white p-5 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
+                    <div className="mt-2 flex items-baseline gap-1">
+                      <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {stat.unit === "ر.س" && <span className="text-sm font-normal">ر.س </span>}
+                        {stat.value}
+                        {stat.unit === "%" && <span className="text-sm font-normal">%</span>}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-full ${stat.color}`}>
+                    <Icon className="h-6 w-6" />
                   </div>
                 </div>
-                <div className={`flex h-12 w-12 items-center justify-center rounded-full ${stat.color}`}>
-                  <Icon className="h-6 w-6" />
-                </div>
+                <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-current opacity-5" />
               </div>
-              <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-current opacity-5" />
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {/* Charts and Side Stats */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

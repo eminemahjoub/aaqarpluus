@@ -1,6 +1,8 @@
 import { DataSource } from "typeorm";
 import {
   UserSchema,
+  OfficeSchema,
+  OfficeOwnerLinkSchema,
   PropertySchema,
   UnitSchema,
   ContactSchema,
@@ -30,6 +32,8 @@ export async function getDataSource(): Promise<DataSource> {
     logging: process.env.NODE_ENV === "development" ? ["error"] : false,
     entities: [
       UserSchema,
+      OfficeSchema,
+      OfficeOwnerLinkSchema,
       PropertySchema,
       UnitSchema,
       ContactSchema,
