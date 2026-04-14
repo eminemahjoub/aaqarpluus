@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
+import { ThemeToggle } from "@/components/landing/ThemeToggle";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -13,6 +14,7 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
+  const [loggingOut, setLoggingOut] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -33,6 +35,23 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
       cancelled = true;
     };
   }, []);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const ac = new AbortController();
+    const t = window.setTimeout(() => ac.abort(), 8000);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", signal: ac.signal });
+    } catch {
+      // ignore network errors; we'll still force a reload to guest mode
+    } finally {
+      window.clearTimeout(t);
+      setLoggingOut(false);
+      setSidebarOpen(false);
+      window.location.assign("/");
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-[#0a1f16]">
@@ -87,10 +106,24 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
             </div>
           </div>
 
-          {/* Left side - Page title on mobile */}
-          <h1 className="text-lg font-semibold text-gray-700 dark:text-gray-200 lg:hidden">
-            لوحة التحكم
-          </h1>
+          {/* Left side */}
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-gray-700 dark:text-gray-200 lg:hidden">
+              لوحة التحكم
+            </h1>
+
+            <ThemeToggle />
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-emerald-800/50 dark:bg-[#102318] dark:text-red-300 dark:hover:bg-red-950/30"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">{loggingOut ? "جاري الخروج…" : "تسجيل الخروج"}</span>
+            </button>
+          </div>
         </header>
 
         {/* Page content */}

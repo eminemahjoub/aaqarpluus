@@ -3,6 +3,7 @@ import { Tajawal } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Navbar } from "@/components/landing/Navbar";
+import { getUserFromCookies } from "@/lib/api-helpers";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -23,18 +24,19 @@ export const metadata: Metadata = {
   ),
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getUserFromCookies();
   return (
     <html lang="ar" dir="rtl" className={tajawal.variable} suppressHydrationWarning>
       <body className="min-h-screen antialiased">
         <ThemeProvider
         >
-          <Navbar />
-          <div className="pt-16 sm:pt-[4.25rem]">{children}</div>
+          {!user ? <Navbar /> : null}
+          <div className={!user ? "pt-16 sm:pt-[4.25rem]" : ""}>{children}</div>
         </ThemeProvider>
       </body>
     </html>
