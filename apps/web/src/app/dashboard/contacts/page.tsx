@@ -4,6 +4,7 @@ import * as React from "react";
 import { Phone, MoreHorizontal, User } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 
 type ContactRow = {
   id: string;
@@ -42,7 +43,7 @@ export function ContactsContent() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch("/api/contacts");
+        const res = await authFetch("/api/contacts");
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled) setContacts(data);
@@ -56,7 +57,7 @@ export function ContactsContent() {
 
   async function handleAddContact(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/contacts", {
+    const res = await authFetch("/api/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -68,7 +69,7 @@ export function ContactsContent() {
     });
     if (!res.ok) return;
 
-    const refresh = await fetch("/api/contacts");
+    const refresh = await authFetch("/api/contacts");
     if (refresh.ok) setContacts(await refresh.json());
     setNewContact({ name: "", phone: "", type: "مستأجر" });
   }

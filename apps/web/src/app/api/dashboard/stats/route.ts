@@ -168,7 +168,12 @@ export async function GET(req: NextRequest) {
     // Calendar marks — include recurring (مهام ثابتة) on every matching day in the month
     const tasksRaw = monthStr
       ? await ds.query(
-          `SELECT id, title, due_date, extra FROM tasks WHERE owner_id = ANY($1) AND due_date IS NOT NULL AND due_date < $3`,
+          `SELECT id, title, due_date, extra
+           FROM tasks
+           WHERE owner_id = ANY($1)
+             AND due_date IS NOT NULL
+             AND due_date >= $2
+             AND due_date < $3`,
           [ownerIds, monthStart, monthEnd]
         )
       : [];

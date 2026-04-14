@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Building, Users, FileText, TrendingUp, DollarSign, Clock, Percent } from "lucide-react";
+import { authFetch } from "@/lib/auth-fetch";
 
 function fmtSar(n: number) {
   return (Number.isFinite(n) ? n : 0).toLocaleString("ar-SA");
@@ -29,10 +30,10 @@ export function AgencyDashboard({ showHeader = true }: { showHeader?: boolean })
         const ym = `${y}-${m}`;
 
         const [propsRes, contactsRes, dashRes, commRes] = await Promise.all([
-          fetch("/api/properties"),
-          fetch("/api/contacts"),
-          fetch(`/api/dashboard/stats?year=${y}`),
-          fetch(`/api/agency/commissions?year=${y}&month=${ym}`),
+          authFetch("/api/properties"),
+          authFetch("/api/contacts"),
+          authFetch(`/api/dashboard/stats?year=${y}`),
+          authFetch(`/api/agency/commissions?year=${y}&month=${ym}`),
         ]);
         const props = propsRes.ok ? await propsRes.json() : [];
         const contacts = contactsRes.ok ? await contactsRes.json() : [];

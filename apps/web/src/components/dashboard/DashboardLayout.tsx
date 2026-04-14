@@ -4,6 +4,7 @@ import * as React from "react";
 import { LogOut, Menu } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
+import { authFetch } from "@/lib/auth-fetch";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -20,7 +21,7 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await authFetch("/api/auth/me");
         if (!res.ok) return;
         const me = await res.json();
         const userType = String(me?.userType ?? "");
@@ -42,7 +43,7 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
     const ac = new AbortController();
     const t = window.setTimeout(() => ac.abort(), 8000);
     try {
-      await fetch("/api/auth/logout", { method: "POST", signal: ac.signal });
+      await authFetch("/api/auth/logout", { method: "POST", signal: ac.signal });
     } catch {
       // ignore network errors; we'll still force a reload to guest mode
     } finally {

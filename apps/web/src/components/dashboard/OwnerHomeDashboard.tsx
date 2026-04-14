@@ -14,6 +14,7 @@ import {
   MoreVertical,
 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 
 type StatCard = {
   label: string;
@@ -107,7 +108,7 @@ export function OwnerHomeDashboard({
       setLoading(true);
       try {
         const y = new Date().getFullYear();
-        const res = await fetch(`/api/dashboard/stats?year=${y}&month=${monthYmd}`);
+        const res = await authFetch(`/api/dashboard/stats?year=${y}&month=${monthYmd}`);
         if (!res.ok) { if (!cancelled) setLoading(false); return; }
         const stats = await res.json();
 

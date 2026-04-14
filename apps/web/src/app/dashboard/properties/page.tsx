@@ -7,6 +7,7 @@ import Link from "next/link";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 import {
   Building2,
   Search,
@@ -3009,7 +3010,7 @@ export function PropertiesContent() {
   const loadProperties = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/properties");
+      const res = await authFetch("/api/properties");
       if (!res.ok) {
         setProperties([]);
         setCurrentContractByProperty({});
@@ -3040,7 +3041,7 @@ export function PropertiesContent() {
     setMounted(true);
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await authFetch("/api/auth/me");
         if (!res.ok) return;
         const me = await res.json();
         const t = String(me?.userType ?? "");
