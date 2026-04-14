@@ -48,6 +48,7 @@ export async function listRevenues(args: { ds: DataSource; user: any; reqUrl: st
   const propertyIds = await getAccessiblePropertyIds(ds, user);
 
   let qb = ds.getRepository("Revenue").createQueryBuilder("r").orderBy("r.received_at", "DESC");
+  qb = qb.andWhere("r.deleted_at IS NULL");
   if (Array.isArray(propertyIds)) {
     if (propertyIds.length === 0) return page ? paginated({ items: [], total: 0, page: page.page, limit: page.limit }) : [];
     qb = qb.where("r.property_id IN (:...propertyIds)", { propertyIds });
@@ -100,6 +101,7 @@ export async function listExpenses(args: { ds: DataSource; user: any; reqUrl: st
   const propertyIds = await getAccessiblePropertyIds(ds, user);
 
   let qb = ds.getRepository("Expense").createQueryBuilder("e").orderBy("e.paid_at", "DESC");
+  qb = qb.andWhere("e.deleted_at IS NULL");
   if (Array.isArray(propertyIds)) {
     if (propertyIds.length === 0) return page ? paginated({ items: [], total: 0, page: page.page, limit: page.limit }) : [];
     qb = qb.where("e.property_id IN (:...propertyIds)", { propertyIds });

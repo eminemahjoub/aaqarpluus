@@ -23,16 +23,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
     }
 
-    // Remove physical file if local
-    if ((doc as any).object_path && (doc as any).bucket === "local") {
-      try {
-        await unlink((doc as any).object_path);
-      } catch {
-        // ignore file not found errors
-      }
-    }
-
-    await repo.delete(id);
+    // Soft delete: keep file on disk for safety.
+    await repo.update(id, { deleted_at: new Date().toISOString() } as any);
     return ok({ success: true });
   } catch (err) {
     return serverError(err);

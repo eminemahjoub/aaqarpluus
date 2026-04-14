@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       .getRepository("Document")
       .createQueryBuilder("d")
       .leftJoinAndSelect("d.property", "property")
-      .where("1=1");
+      .where("d.deleted_at IS NULL");
 
     if (Array.isArray(propertyIds)) {
       if (propertyIds.length === 0) return ok([]);

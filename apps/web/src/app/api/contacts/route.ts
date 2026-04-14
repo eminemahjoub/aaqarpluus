@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
           `SELECT DISTINCT c.*
            FROM contacts c
            JOIN contracts ct ON ct.contact_id = c.id
-           WHERE ct.property_id = ANY($1) ${where}
+           WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}
            ORDER BY c.created_at DESC`,
           params
         );
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         `SELECT COUNT(DISTINCT c.id)::int AS total
          FROM contacts c
          JOIN contracts ct ON ct.contact_id = c.id
-         WHERE ct.property_id = ANY($1) ${where}`,
+         WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}`,
         params
       );
       const total = Number(totalRows?.[0]?.total ?? 0) || 0;
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         `SELECT DISTINCT c.*
          FROM contacts c
          JOIN contracts ct ON ct.contact_id = c.id
-         WHERE ct.property_id = ANY($1) ${where}
+         WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}
          ORDER BY c.created_at DESC
          LIMIT $${idx++} OFFSET $${idx++}`,
         params
@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
       .getRepository("Contact")
       .createQueryBuilder("c")
       .where("c.owner_id = :ownerId", { ownerId: user.userId })
+      .andWhere("c.deleted_at IS NULL")
       .orderBy("c.created_at", "DESC");
 
     if (type) qb = qb.andWhere("c.type = :type", { type });

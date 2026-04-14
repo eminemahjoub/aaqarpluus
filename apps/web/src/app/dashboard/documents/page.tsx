@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { uploadWithProgress, validateUploadFile } from "@/lib/upload";
 
 // Types
 interface Document {
@@ -444,6 +445,8 @@ export function DocumentsContent() {
   const [viewingDocument, setViewingDocument] = useState<Document | null>(null);
   const [deletingDocument, setDeletingDocument] = useState<Document | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Filter documents
   const filteredDocuments = documents.filter((doc) => {
@@ -460,13 +463,36 @@ export function DocumentsContent() {
 
   const handleUpload = (files: FileList, propertyId: string | null) => {
     void (async () => {
+      setUploadError(null);
       const uploaded: Document[] = [];
       for (const file of Array.from(files)) {
+        const err = validateUploadFile(file, {
+          maxBytes: 20 * 1024 * 1024,
+          allowedMime: [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ],
+        });
+        if (err) {
+          setUploadError(err);
+          continue;
+        }
         const formData = new FormData();
         formData.append("file", file);
         if (propertyId) formData.append("property_id", propertyId);
 
-        const res = await authFetch("/api/documents", { method: "POST", body: formData });
+        setUploadProgress(0);
+        const res = await uploadWithProgress({
+          url: "/api/documents",
+          formData,
+          onProgress: (p) => setUploadProgress(p.percent),
+        });
         if (!res.ok) continue;
         const inserted = await res.json();
 
@@ -496,6 +522,7 @@ export function DocumentsContent() {
       if (uploaded.length > 0) {
         setDocuments((prev) => [...uploaded, ...prev]);
       }
+      setUploadProgress(null);
     })();
   };
 
@@ -601,6 +628,27 @@ export function DocumentsContent() {
             اسحب الملفات هنا أو انقر للاختيار
           </p>
         </div>
+
+        {uploadError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+            {uploadError}
+          </div>
+        ) : null}
+
+        {uploadProgress !== null ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-emerald-800/30 dark:bg-[#1a3528]">
+            <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300">
+              <span>جاري رفع الملف...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-[#132a1f]">
+              <div
+                className="h-full rounded-full bg-emerald-600 transition-[width]"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
 
         {/* Documents Grid */}
         {filteredDocuments.length === 0 ? (

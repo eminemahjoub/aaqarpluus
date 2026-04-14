@@ -4,6 +4,10 @@ import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-hel
 import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
 
+type CacheEntry = { expiresAt: number; value: any };
+const STATS_CACHE = new Map<string, CacheEntry>();
+const TTL_MS = 5 * 60_000;
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
@@ -13,10 +17,20 @@ export async function GET(req: NextRequest) {
     const year = searchParams.get("year") ?? String(new Date().getFullYear());
     const monthStr = searchParams.get("month"); // YYYY-MM for calendar data
 
+    const cacheKey = [
+      String(user.userId ?? ""),
+      String(user.userType ?? ""),
+      String((user as any).officeId ?? ""),
+      `y=${year}`,
+      `m=${monthStr ?? ""}`,
+    ].join("|");
+    const hit = STATS_CACHE.get(cacheKey);
+    if (hit && hit.expiresAt > Date.now()) return ok(hit.value);
+
     const ds = await getDataSource();
     const propertyIds = await getAccessiblePropertyIds(ds, user);
     if (Array.isArray(propertyIds) && propertyIds.length === 0) {
-      return ok({
+      const empty = {
         monthly: [],
         totalUnits: 0,
         occupiedUnits: 0,
@@ -25,7 +39,9 @@ export async function GET(req: NextRequest) {
         pendingPayments: [],
         monthPayments: [],
         calendarData: { tasks: [], revenues: [], expenses: [], contracts: [], monthPayments: [] },
-      });
+      };
+      STATS_CACHE.set(cacheKey, { value: empty, expiresAt: Date.now() + TTL_MS });
+      return ok(empty);
     }
 
     // Monthly income & expenses
@@ -218,7 +234,7 @@ export async function GET(req: NextRequest) {
         )
       : [];
 
-    return ok({
+    const value = {
       monthly,
       totalUnits,
       occupiedUnits,
@@ -230,7 +246,9 @@ export async function GET(req: NextRequest) {
       })),
       monthPayments,
       calendarData: { tasks, revenues, expenses, contracts, monthPayments },
-    });
+    };
+    STATS_CACHE.set(cacheKey, { value, expiresAt: Date.now() + TTL_MS });
+    return ok(value);
   } catch (err) {
     return serverError(err);
   }

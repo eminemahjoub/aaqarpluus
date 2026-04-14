@@ -36,9 +36,9 @@ export async function GET(req: NextRequest) {
 
     if (Array.isArray(propertyIds)) {
       if (propertyIds.length === 0) return ok([]);
-      qb = qb.where("t.property_id IN (:...propertyIds)", { propertyIds });
+      qb = qb.where("t.property_id IN (:...propertyIds)", { propertyIds }).andWhere("t.deleted_at IS NULL");
     } else {
-      qb = qb.where("t.owner_id = :ownerId", { ownerId: user.userId });
+      qb = qb.where("t.owner_id = :ownerId", { ownerId: user.userId }).andWhere("t.deleted_at IS NULL");
     }
 
     const tasks = await qb.getMany();

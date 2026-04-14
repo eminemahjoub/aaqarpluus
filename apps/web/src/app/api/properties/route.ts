@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
         .getRepository("Property")
         .createQueryBuilder("p")
         .where("p.id IN (:...propertyIds)", { propertyIds })
+        .andWhere("p.deleted_at IS NULL")
         .orderBy("p.created_at", "DESC");
       if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
       if (!page) {
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
         .getRepository("Property")
         .createQueryBuilder("p")
         .where("p.owner_id = :ownerId", { ownerId: user.userId })
+        .andWhere("p.deleted_at IS NULL")
         .orderBy("p.created_at", "DESC");
       if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
       if (!page) {

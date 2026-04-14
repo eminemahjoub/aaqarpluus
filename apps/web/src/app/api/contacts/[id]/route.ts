@@ -51,7 +51,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await ds.query(`UPDATE contracts SET contact_id = NULL WHERE contact_id = $1`, [id]);
     await ds.query(`UPDATE tasks SET contact_id = NULL WHERE contact_id = $1`, [id]);
 
-    await repo.delete(id);
+    await repo.update(id, { deleted_at: new Date().toISOString() } as any);
     return ok({ success: true });
   } catch (err) {
     return serverError(err);

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Tajawal } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { QueryProvider } from "@/components/providers/query-provider";
 import { Navbar } from "@/components/landing/Navbar";
 import { getUserFromCookies } from "@/lib/api-helpers";
 
@@ -33,10 +34,11 @@ export default async function RootLayout({
   return (
     <html lang="ar" dir="rtl" className={tajawal.variable} suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        <ThemeProvider
-        >
-          {!user ? <Navbar /> : null}
-          <div className={!user ? "pt-16 sm:pt-[4.25rem]" : ""}>{children}</div>
+        <ThemeProvider>
+          <QueryProvider>
+            {!user ? <Navbar /> : null}
+            <div className={!user ? "pt-16 sm:pt-[4.25rem]" : ""}>{children}</div>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

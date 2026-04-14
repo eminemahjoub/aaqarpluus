@@ -5,6 +5,8 @@ import { Phone, MoreHorizontal, User } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { ErrorState, PageLoading } from "@/components/ui/states";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 type ContactRow = {
   id: string;
@@ -32,47 +34,57 @@ function toArabicType(db: ContactRow["type"]) {
 }
 
 export function ContactsContent() {
-  const [loading, setLoading] = React.useState(true);
-  const [contacts, setContacts] = React.useState<ContactRow[]>([]);
   const [newContact, setNewContact] = React.useState({ name: "", phone: "", type: "مستأجر" });
 
   const refreshTick = useRealtimeRefresh();
+  const qc = useQueryClient();
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await authFetch("/api/contacts");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setContacts(data);
-      } finally {
-        if (!cancelled) setLoading(false);
+  const contactsQuery = useQuery({
+    queryKey: ["contacts", refreshTick],
+    queryFn: async () => {
+      const res = await authFetch("/api/contacts");
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error ?? "تعذّر تحميل جهات الاتصال");
       }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [refreshTick]);
+      const data = await res.json();
+      return Array.isArray(data) ? (data as ContactRow[]) : [];
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newContact.name.trim(),
+          phone: newContact.phone.trim() || null,
+          type: toDbContactType(newContact.type),
+          status: "active",
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error ?? "تعذّر الإضافة");
+      }
+      return res.json().catch(() => null);
+    },
+    onSuccess: async () => {
+      setNewContact({ name: "", phone: "", type: "مستأجر" });
+      await qc.invalidateQueries({ queryKey: ["contacts"] });
+    },
+  });
 
   async function handleAddContact(e: React.FormEvent) {
     e.preventDefault();
-    const res = await authFetch("/api/contacts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newContact.name.trim(),
-        phone: newContact.phone.trim() || null,
-        type: toDbContactType(newContact.type),
-        status: "active",
-      }),
-    });
-    if (!res.ok) return;
-
-    const refresh = await authFetch("/api/contacts");
-    if (refresh.ok) setContacts(await refresh.json());
-    setNewContact({ name: "", phone: "", type: "مستأجر" });
+    await addMutation.mutateAsync();
   }
+
+  if (contactsQuery.isLoading) return <PageLoading rows={6} />;
+  if (contactsQuery.isError) return <ErrorState message={(contactsQuery.error as any)?.message ?? "تعذّر تحميل البيانات"} onRetry={() => contactsQuery.refetch()} />;
+
+  const contacts = contactsQuery.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -145,11 +157,7 @@ export function ContactsContent() {
               <h2 className="font-semibold text-gray-900 dark:text-white">قائمة جهات الاتصال</h2>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-emerald-800/30">
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                </div>
-              ) : contacts.length === 0 ? (
+              {contacts.length === 0 ? (
                 <div className="py-12 text-center text-gray-500 dark:text-gray-400">لا توجد جهات اتصال</div>
               ) : (
                 contacts.map((contact) => (
