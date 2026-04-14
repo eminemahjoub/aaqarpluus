@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Building, Users, FileText, TrendingUp, DollarSign, Clock } from "lucide-react";
+import { Building, Users, FileText, TrendingUp, DollarSign, Clock, Percent } from "lucide-react";
 
 function fmtSar(n: number) {
   return (Number.isFinite(n) ? n : 0).toLocaleString("ar-SA");
@@ -16,20 +16,28 @@ export function AgencyDashboard({ showHeader = true }: { showHeader?: boolean })
     totalRevenue: 0,
     pendingPayments: 0,
     activeContracts: 0,
+    monthCommission: 0,
+    yearCommission: 0,
   });
 
   React.useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [propsRes, contactsRes, dashRes] = await Promise.all([
+        const y = new Date().getFullYear();
+        const m = String(new Date().getMonth() + 1).padStart(2, "0");
+        const ym = `${y}-${m}`;
+
+        const [propsRes, contactsRes, dashRes, commRes] = await Promise.all([
           fetch("/api/properties"),
           fetch("/api/contacts"),
-          fetch(`/api/dashboard/stats?year=${new Date().getFullYear()}`),
+          fetch(`/api/dashboard/stats?year=${y}`),
+          fetch(`/api/agency/commissions?year=${y}&month=${ym}`),
         ]);
         const props = propsRes.ok ? await propsRes.json() : [];
         const contacts = contactsRes.ok ? await contactsRes.json() : [];
         const dash = dashRes.ok ? await dashRes.json() : {};
+        const comm = commRes.ok ? await commRes.json() : {};
 
         const totalRevenue = (dash.monthly ?? []).reduce((a: number, r: any) => a + (Number(r.income_sar) || 0), 0);
         const pending = (dash.pendingPayments ?? []).reduce((a: number, r: any) => a + (Number(r.amount_sar) || 0), 0);
@@ -41,6 +49,8 @@ export function AgencyDashboard({ showHeader = true }: { showHeader?: boolean })
           totalRevenue,
           pendingPayments: pending,
           activeContracts: dash.activeContracts ?? 0,
+          monthCommission: Number(comm?.monthCommissionSar) || 0,
+          yearCommission: Number(comm?.yearCommissionSar) || 0,
         });
       } finally {
         setLoading(false);
@@ -55,7 +65,8 @@ export function AgencyDashboard({ showHeader = true }: { showHeader?: boolean })
     { label: "العقود الفعالة", value: String(stats.activeContracts), icon: FileText, color: "bg-emerald-100 text-emerald-600" },
     { label: "إجمالي الإيرادات", value: `${fmtSar(stats.totalRevenue)} ر.س`, icon: TrendingUp, color: "bg-indigo-100 text-indigo-600" },
     { label: "المدفوعات المعلقة", value: `${fmtSar(stats.pendingPayments)} ر.س`, icon: Clock, color: "bg-yellow-100 text-yellow-600" },
-    { label: "إجمالي العقود", value: String(stats.totalContracts), icon: DollarSign, color: "bg-red-100 text-red-600" },
+    { label: "عمولة هذا الشهر", value: `${fmtSar(stats.monthCommission)} ر.س`, icon: Percent, color: "bg-amber-100 text-amber-700" },
+    { label: "عمولة هذا العام", value: `${fmtSar(stats.yearCommission)} ر.س`, icon: DollarSign, color: "bg-red-100 text-red-600" },
   ];
 
   return (

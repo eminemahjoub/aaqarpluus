@@ -175,6 +175,11 @@ type DbProperty = {
   longitude?: number | null;
   property_model_type: string | null;
   cover_url: string | null;
+  owner_name?: string | null;
+  owner_phone?: string | null;
+  managing_office_name?: string | null;
+  managing_office_phone?: string | null;
+  managing_office_email?: string | null;
   units_count: number;
   apartments_count: number;
   shops_count: number;
@@ -603,14 +608,15 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
 // ADD SINGLE PROPERTY MODAL
 // ============================================================================
 
-function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onClose: () => void; userType: "owner" | "agency" | "personal" }) {
   const router = useRouter();
-  const officeContacts = useOfficeContacts(isOpen);
   const [agencyOffices, setAgencyOffices] = useState<{ officeId: string; officeName: string }[]>([]);
+  const [linkedOwners, setLinkedOwners] = useState<Array<{ owner_id: string; full_name: string | null; email: string | null; phone: string | null }>>([]);
   const [structureError, setStructureError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [formData, setFormData] = useState({
+    ownerId: "",
     propertyNumber: "2",
     name: "",
     region: "",
@@ -627,7 +633,6 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     commissionPercent: "",
     managingOfficeId: "",
     lessorType: "owner" as "owner" | "office",
-    lessorContactId: "",
     area: "",
     annualRent: "30000",
     rentWithAddition: "30000",
@@ -650,26 +655,73 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/owner/agencies");
-        const data = res.ok ? await res.json() : [];
-        const offices = Array.isArray(data)
-          ? data.map((g: any) => ({ officeId: String(g.officeId), officeName: String(g.officeName ?? "—") }))
-          : [];
-        if (!cancelled) setAgencyOffices(offices);
+        if (userType === "agency") {
+          const res = await fetch("/api/offices/owners");
+          const data = res.ok ? await res.json() : [];
+          const owners = Array.isArray(data)
+            ? data.map((r: any) => ({
+                owner_id: String(r.owner_id),
+                full_name: r.full_name ? String(r.full_name) : null,
+                email: r.email ? String(r.email) : null,
+                phone: r.phone ? String(r.phone) : null,
+              }))
+            : [];
+          if (!cancelled) setLinkedOwners(owners);
+        } else {
+          const res = await fetch("/api/owner/agencies");
+          const data = res.ok ? await res.json() : [];
+          const offices = Array.isArray(data)
+            ? data.map((g: any) => ({ officeId: String(g.officeId), officeName: String(g.officeName ?? "—") }))
+            : [];
+          if (!cancelled) setAgencyOffices(offices);
+        }
       } catch {
-        if (!cancelled) setAgencyOffices([]);
+        if (!cancelled) {
+          setAgencyOffices([]);
+          setLinkedOwners([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, userType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = totalUnitsFromCounts;
-    if (formData.lessorType === "office" && !formData.lessorContactId) {
-      setStructureError("يرجى اختيار المكتب من القائمة (أو أضف مكتباً من جهات الاتصال بنوع «مكتب»).");
+    if (userType === "agency" && !formData.ownerId.trim()) {
+      setStructureError("يرجى اختيار المالك.");
+      return;
+    }
+    if (userType === "agency" && !formData.commissionPercent?.trim()) {
+      setStructureError("يرجى إدخال نسبة العمولة.");
+      return;
+    }
+    if (userType === "agency") {
+      const n = formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null;
+      if (n === null || !Number.isFinite(n) || n < 0 || n > 100) {
+        setStructureError("نسبة العمولة يجب أن تكون رقمًا بين 0 و 100.");
+        return;
+      }
+    }
+    if (formData.lessorType === "office" && !formData.managingOfficeId?.trim()) {
+      setStructureError("يرجى اختيار المكتب.");
+      return;
+    }
+    if (formData.lessorType === "office" && !formData.commissionPercent?.trim()) {
+      setStructureError("يرجى إدخال نسبة العمولة للمكتب.");
+      return;
+    }
+    const commissionNum =
+      formData.lessorType === "office" && formData.commissionPercent?.trim()
+        ? Number(formData.commissionPercent)
+        : null;
+    if (
+      formData.lessorType === "office" &&
+      (commissionNum === null || !Number.isFinite(commissionNum) || commissionNum < 0 || commissionNum > 100)
+    ) {
+      setStructureError("نسبة العمولة يجب أن تكون رقمًا بين 0 و 100.");
       return;
     }
     if (total <= 0) {
@@ -683,6 +735,7 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        owner_id: userType === "agency" ? formData.ownerId.trim() : undefined,
         name: (formData.name || formData.title || "عقار").trim(),
         title: formData.title?.trim() || null,
         status: "vacant",
@@ -701,10 +754,20 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         water_account: formData.waterAccount?.trim() || null,
         electricity_account: formData.electricityAccount?.trim() || null,
         payment_frequency: formData.contractDuration?.trim() || null,
-        lessor_type: formData.lessorType,
-        lessor_contact_id: formData.lessorType === "office" ? formData.lessorContactId : null,
-        managing_office_id: formData.managingOfficeId?.trim() ? formData.managingOfficeId.trim() : null,
-        commission_percent: formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null,
+        lessor_type: userType === "agency" ? "office" : formData.lessorType,
+        lessor_contact_id: null,
+        managing_office_id:
+          userType === "agency"
+            ? null
+            : formData.lessorType === "office" && formData.managingOfficeId?.trim()
+              ? formData.managingOfficeId.trim()
+              : null,
+        commission_percent:
+          userType === "agency"
+            ? (formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null)
+            : formData.lessorType === "office" && formData.commissionPercent?.trim()
+              ? Number(formData.commissionPercent)
+              : null,
       }),
     });
     setSaving(false);
@@ -736,6 +799,44 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="إضافة عقار جديد" size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {userType === "agency" ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
+            <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المالك</p>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المالك</label>
+            <select
+              value={formData.ownerId}
+              onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">—</option>
+              {linkedOwners.map((o) => (
+                <option key={o.owner_id} value={o.owner_id}>
+                  {o.full_name ?? o.email ?? "مالك"}
+                  {o.phone ? ` (${o.phone})` : ""}
+                </option>
+              ))}
+            </select>
+            {linkedOwners.length === 0 ? (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">لا توجد قائمة ملاك مرتبطة بالمكتب بعد.</p>
+            ) : null}
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  placeholder="مثال: 5"
+                  value={formData.commissionPercent}
+                  onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -774,41 +875,7 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">المكتب (اختياري)</label>
-            <select
-              value={formData.managingOfficeId}
-              onChange={(e) => setFormData({ ...formData, managingOfficeId: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-            >
-              <option value="">بدون مكتب</option>
-              {agencyOffices.map((o) => (
-                <option key={o.officeId} value={o.officeId}>
-                  {o.officeName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              نسبة العمولة (%) {formData.managingOfficeId ? "" : "(اختياري)"}
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step="0.01"
-              placeholder="مثال: 5"
-              value={formData.commissionPercent}
-              onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              سيتم احتسابها تلقائياً كمصروف عند تسجيل الإيراد لهذا العقار.
-            </p>
-          </div>
-        </div>
+        {/* تم نقل (المكتب + العمولة) إلى قسم "المؤجر" */}
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">المنطقة</label>
@@ -942,19 +1009,6 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                     <option value="سنوي">سنوي</option>
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    placeholder="مثال: 5.5"
-                    value={formData.commissionPercent}
-                    onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-                  />
-                </div>
               </div>
 
               {structureError ? (
@@ -975,58 +1029,84 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             className="h-20 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
           />
         </div>
-        <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
-          <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المؤجر</p>
-          <div className="flex flex-wrap gap-6">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
-              <input
-                type="radio"
-                name="add-lessor-type"
-                checked={formData.lessorType === "owner"}
-                onChange={() => setFormData({ ...formData, lessorType: "owner", lessorContactId: "" })}
-                className="text-indigo-600"
-              />
-              مالك
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
-              <input
-                type="radio"
-                name="add-lessor-type"
-                checked={formData.lessorType === "office"}
-                onChange={() => setFormData({ ...formData, lessorType: "office" })}
-                className="text-indigo-600"
-              />
-              مكتب
-            </label>
-          </div>
-          {formData.lessorType === "office" ? (
-            <div className="mt-3">
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
-              <select
-                value={formData.lessorContactId}
-                onChange={(e) => setFormData({ ...formData, lessorContactId: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-              >
-                <option value="">—</option>
-                {officeContacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.phone ? ` (${c.phone})` : ""}
-                  </option>
-                ))}
-              </select>
-              {officeContacts.length === 0 ? (
-                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                  لا توجد جهات اتصال نوعها «مكتب». أضف مكتباً من{" "}
-                  <Link href="/dashboard/contacts" className="font-medium underline">
-                    جهات الاتصال
-                  </Link>{" "}
-                  واختر النوع «مكتب».
-                </p>
-              ) : null}
+        {userType !== "agency" ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
+            <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المؤجر</p>
+            <div className="flex flex-wrap gap-6">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+                <input
+                  type="radio"
+                  name="add-lessor-type"
+                  checked={formData.lessorType === "owner"}
+                  onChange={() =>
+                    setFormData({
+                      ...formData,
+                      lessorType: "owner",
+                      managingOfficeId: "",
+                      commissionPercent: "",
+                    })
+                  }
+                  className="text-indigo-600"
+                />
+                مالك
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
+                <input
+                  type="radio"
+                  name="add-lessor-type"
+                  checked={formData.lessorType === "office"}
+                  onChange={() => setFormData({ ...formData, lessorType: "office" })}
+                  className="text-indigo-600"
+                />
+                مكتب
+              </label>
             </div>
-          ) : null}
-        </div>
+            {formData.lessorType === "office" ? (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
+                  <select
+                    value={formData.managingOfficeId}
+                    onChange={(e) => setFormData({ ...formData, managingOfficeId: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                  >
+                    <option value="">—</option>
+                    {agencyOffices.map((o) => (
+                      <option key={o.officeId} value={o.officeId}>
+                        {o.officeName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    placeholder="مثال: 5"
+                    value={formData.commissionPercent}
+                    onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    سيتم احتسابها تلقائياً كمصروف عند تسجيل الإيراد لهذا العقار.
+                  </p>
+                </div>
+                {agencyOffices.length === 0 ? (
+                  <p className="sm:col-span-2 mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    لا توجد مكاتب مضافة بعد. أضف مكتباً من صفحة{" "}
+                    <Link href="/dashboard/agencies" className="font-medium underline">
+                      المكاتب
+                    </Link>
+                    .
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">رقم حساب الكهرباء</label>
@@ -1122,7 +1202,7 @@ function AddPropertyModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 // ============================================================================
 
 function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onClose: () => void; property: DbProperty }) {
-  const officeContacts = useOfficeContacts(isOpen);
+  const [agencyOffices, setAgencyOffices] = useState<{ officeId: string; officeName: string }[]>([]);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     name: property.name,
@@ -1134,7 +1214,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     longitude: (property as any).longitude != null ? String((property as any).longitude) : "",
     title: property.title ?? property.name,
     lessorType: ((property as any).lessor_type === "office" ? "office" : "owner") as "owner" | "office",
-    lessorContactId: String((property as any).lessor_contact_id ?? ""),
+    managingOfficeId: String((property as any).managing_office_id ?? ""),
     paymentFrequency: String((property as any).payment_frequency ?? "شهري"),
     commissionPercent:
       (property as any).commission_percent != null && (property as any).commission_percent !== ""
@@ -1157,6 +1237,26 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
   const cityOptions = React.useMemo(() => citiesForRegion(formData.region), [formData.region]);
   const neighborhoodOptions = React.useMemo(() => neighborhoodsForCity(formData.city), [formData.city]);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/owner/agencies");
+        const data = res.ok ? await res.json() : [];
+        const offices = Array.isArray(data)
+          ? data.map((g: any) => ({ officeId: String(g.officeId), officeName: String(g.officeName ?? "—") }))
+          : [];
+        if (!cancelled) setAgencyOffices(offices);
+      } catch {
+        if (!cancelled) setAgencyOffices([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void (async () => {
@@ -1178,8 +1278,10 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
           electricity_account: formData.electricityAccount?.trim() || null,
           payment_frequency: formData.paymentFrequency?.trim() || null,
           lessor_type: formData.lessorType,
-          lessor_contact_id: formData.lessorType === "office" ? formData.lessorContactId || null : null,
-          commission_percent: formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null,
+          lessor_contact_id: null,
+          managing_office_id:
+            formData.lessorType === "office" && formData.managingOfficeId?.trim() ? formData.managingOfficeId.trim() : null,
+          commission_percent: formData.lessorType === "office" && formData.commissionPercent?.trim() ? Number(formData.commissionPercent) : null,
         }),
       });
       // Upload any new images
@@ -1375,19 +1477,6 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
                 <option value="سنوي">سنوي</option>
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة %</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step="0.1"
-                placeholder="مثال: 5.5"
-                value={formData.commissionPercent}
-                onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-              />
-            </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-6">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
@@ -1395,7 +1484,14 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
                 type="radio"
                 name="edit-lessor-type"
                 checked={formData.lessorType === "owner"}
-                onChange={() => setFormData({ ...formData, lessorType: "owner", lessorContactId: "" })}
+                onChange={() =>
+                  setFormData({
+                    ...formData,
+                    lessorType: "owner",
+                    managingOfficeId: "",
+                    commissionPercent: "",
+                  })
+                }
                 className="text-indigo-600"
               />
               مالك
@@ -1412,28 +1508,45 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
             </label>
           </div>
           {formData.lessorType === "office" ? (
-            <div className="mt-3">
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
-              <select
-                value={formData.lessorContactId}
-                onChange={(e) => setFormData({ ...formData, lessorContactId: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-              >
-                <option value="">—</option>
-                {officeContacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.phone ? ` (${c.phone})` : ""}
-                  </option>
-                ))}
-              </select>
-              {officeContacts.length === 0 ? (
-                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                  أضف مكتباً من{" "}
-                  <Link href="/dashboard/contacts" className="font-medium underline">
-                    جهات الاتصال
-                  </Link>{" "}
-                  (النوع: مكتب).
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">اختر المكتب</label>
+                <select
+                  value={formData.managingOfficeId}
+                  onChange={(e) => setFormData({ ...formData, managingOfficeId: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                >
+                  <option value="">—</option>
+                  {agencyOffices.map((o) => (
+                    <option key={o.officeId} value={o.officeId}>
+                      {o.officeName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">نسبة العمولة (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  placeholder="مثال: 5"
+                  value={formData.commissionPercent}
+                  onChange={(e) => setFormData({ ...formData, commissionPercent: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  سيتم احتسابها تلقائياً كمصروف عند تسجيل الإيراد لهذا العقار.
+                </p>
+              </div>
+              {agencyOffices.length === 0 ? (
+                <p className="sm:col-span-2 mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  لا توجد مكاتب مضافة بعد. أضف مكتباً من صفحة{" "}
+                  <Link href="/dashboard/agencies" className="font-medium underline">
+                    المكاتب
+                  </Link>
+                  .
                 </p>
               ) : null}
             </div>
@@ -2874,6 +2987,7 @@ export function PropertiesContent() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<DbProperty[]>([]);
+  const [userType, setUserType] = useState<"owner" | "agency" | "personal">("owner");
   const [currentContractByProperty, setCurrentContractByProperty] = useState<
     Record<string, { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string }>
   >({});
@@ -2924,6 +3038,17 @@ export function PropertiesContent() {
 
   useEffect(() => {
     setMounted(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const me = await res.json();
+        const t = String(me?.userType ?? "");
+        setUserType(t === "agency" ? "agency" : t === "personal" ? "personal" : "owner");
+      } catch {
+        // ignore
+      }
+    })();
     void loadProperties();
   }, [loadProperties, refreshTick]);
 
@@ -3111,6 +3236,7 @@ export function PropertiesContent() {
       <AddPropertyModal
         isOpen={showAddProperty}
         onClose={() => setShowAddProperty(false)}
+        userType={userType}
       />
     </div>
   );
@@ -3217,6 +3343,8 @@ function PropertyCard({
 
 function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; onBack: () => void; onDelete?: () => void }) {
   const [activeTab, setActiveTab] = useState("info");
+  const [isAgencyUser, setIsAgencyUser] = useState<boolean>(false);
+  const [commissionTotals, setCommissionTotals] = useState<{ totalCommissionSar: number; monthCommissionSar: number; yearCommissionSar: number } | null>(null);
   const [contractHistory, setContractHistory] = useState<
     Array<{ id: string; tenant: string; unitId: string | null; unitLabel: string; startDate: string; endDate: string; rent: number; status: string }>
   >([]);
@@ -3291,6 +3419,56 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
   const refreshTick = useRealtimeRefresh();
   const [localTick, setLocalTick] = useState(0);
   const bumpRefresh = React.useCallback(() => setLocalTick((t) => t + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const me = await res.json();
+        const agency = String(me?.userType ?? "") === "agency";
+        if (!cancelled) setIsAgencyUser(agency);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isAgencyUser) {
+      setCommissionTotals(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const y = new Date().getFullYear();
+        const m = String(new Date().getMonth() + 1).padStart(2, "0");
+        const url = new URL("/api/agency/commissions", window.location.origin);
+        url.searchParams.set("year", String(y));
+        url.searchParams.set("month", `${y}-${m}`);
+        url.searchParams.set("property_id", String(property.id));
+        const res = await fetch(url.toString());
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setCommissionTotals({
+          totalCommissionSar: Number(data?.totalCommissionSar) || 0,
+          monthCommissionSar: Number(data?.monthCommissionSar) || 0,
+          yearCommissionSar: Number(data?.yearCommissionSar) || 0,
+        });
+      } catch {
+        if (!cancelled) setCommissionTotals(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAgencyUser, property.id, refreshTick, localTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3814,6 +3992,82 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                     <span className="mr-1 text-sm font-normal text-gray-500">ر.س</span>
                   </p>
                 </div>
+
+                {/* Agency: Owner + Commission */}
+                {isAgencyUser ? (
+                  <div className="rounded-xl bg-white p-4 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">المالك والعمولة</span>
+                      <Users className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">المالك</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{property.owner_name ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">جوال المالك</span>
+                        <span className="font-semibold text-gray-900 dark:text-white" dir="ltr">
+                          {property.owner_phone ?? "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">نسبة العمولة</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {property.commission_percent != null ? `${Number(property.commission_percent)}%` : "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">ربح المكتب (عمولة)</span>
+                        <span className="font-bold text-gray-900 dark:text-white">
+                          {(commissionTotals?.totalCommissionSar ?? 0).toLocaleString("ar-SA")}{" "}
+                          <span className="text-xs font-normal text-gray-500 dark:text-gray-400">ر.س</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">عمولة هذا الشهر</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {(commissionTotals?.monthCommissionSar ?? 0).toLocaleString("ar-SA")}{" "}
+                          <span className="text-xs font-normal text-gray-500 dark:text-gray-400">ر.س</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Owner: Managing office */}
+                {!isAgencyUser && property.managing_office_name ? (
+                  <div className="rounded-xl bg-white p-4 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">المكتب المكلّف بالعقار</span>
+                      <Users className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">المكتب</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{property.managing_office_name ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">الجوال</span>
+                        <span className="font-semibold text-gray-900 dark:text-white" dir="ltr">
+                          {property.managing_office_phone ?? "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">البريد</span>
+                        <span className="font-semibold text-gray-900 dark:text-white" dir="ltr">
+                          {property.managing_office_email ?? "—"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-gray-500 dark:text-gray-400">نسبة العمولة</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {property.commission_percent != null ? `${Number(property.commission_percent)}%` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Net Income Rate */}
                 <div className="rounded-xl bg-white p-4 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">

@@ -33,6 +33,19 @@ export async function GET(req: NextRequest) {
     const propIds = properties.map((p: any) => p.id).filter(Boolean);
     const today = new Date().toISOString().split("T")[0];
 
+    // Attach owner info (useful for agency view)
+    let ownerMap: Record<string, { full_name: string | null; phone: string | null }> = {};
+    const ownerIdsForMap = Array.from(new Set(properties.map((p: any) => String(p.owner_id)).filter(Boolean)));
+    if (ownerIdsForMap.length > 0) {
+      const owners = await ds.query(
+        `SELECT id, full_name, phone FROM users WHERE id = ANY($1)`,
+        [ownerIdsForMap]
+      );
+      for (const row of owners ?? []) {
+        if (row?.id) ownerMap[String(row.id)] = { full_name: row.full_name ? String(row.full_name) : null, phone: row.phone ? String(row.phone) : null };
+      }
+    }
+
     let contractMap: Record<string, any> = {};
     if (propIds.length > 0) {
       const contracts = await ds
@@ -76,10 +89,50 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Attach managing office info (useful for owner view)
+    let officeMap: Record<string, { name: string; phone: string | null; email: string | null }> = {};
+    const officeIdsForMap = Array.from(
+      new Set(properties.map((p: any) => (p.managing_office_id ? String(p.managing_office_id) : "")).filter(Boolean))
+    );
+    if (officeIdsForMap.length > 0) {
+      const offices = await ds.query(
+        `
+        SELECT
+          o.id AS office_id,
+          o.name AS office_name,
+          u.phone AS office_phone,
+          u.email AS office_email
+        FROM offices o
+        LEFT JOIN LATERAL (
+          SELECT uu.phone, uu.email
+          FROM users uu
+          WHERE uu.office_id = o.id AND uu.user_type = 'agency'
+          ORDER BY uu.created_at ASC
+          LIMIT 1
+        ) u ON TRUE
+        WHERE o.id = ANY($1)
+        `,
+        [officeIdsForMap]
+      );
+      for (const row of offices ?? []) {
+        if (!row?.office_id) continue;
+        officeMap[String(row.office_id)] = {
+          name: String(row.office_name ?? "—"),
+          phone: row.office_phone ? String(row.office_phone) : null,
+          email: row.office_email ? String(row.office_email) : null,
+        };
+      }
+    }
+
     const result = properties.map((p: any) => ({
       ...p,
       active_contract: contractMap[p.id] ?? null,
       cover_url: coverMap[p.id] ?? null,
+      owner_name: ownerMap[String(p.owner_id)]?.full_name ?? null,
+      owner_phone: ownerMap[String(p.owner_id)]?.phone ?? null,
+      managing_office_name: p.managing_office_id ? officeMap[String(p.managing_office_id)]?.name ?? null : null,
+      managing_office_phone: p.managing_office_id ? officeMap[String(p.managing_office_id)]?.phone ?? null : null,
+      managing_office_email: p.managing_office_id ? officeMap[String(p.managing_office_id)]?.email ?? null : null,
     }));
 
     return ok(result);
@@ -96,17 +149,95 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     if (!body.name?.trim()) return badRequest("اسم العقار مطلوب");
 
-    if (String(user.userType ?? "") === "agency") {
-      return unauthorized();
+    const isUuid = (v: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
+    const lessorType = body.lessor_type === "office" || body.lessor_type === "owner" ? body.lessor_type : null;
+    const lessorContactIdRaw = typeof body.lessor_contact_id === "string" ? body.lessor_contact_id.trim() : "";
+    const lessorContactId = lessorType === "office" && lessorContactIdRaw ? lessorContactIdRaw : null;
+    if (lessorContactId && !isUuid(lessorContactId)) return badRequest("معرّف جهة الاتصال (المؤجر) غير صحيح");
+
+    const commissionPercentRaw =
+      body.commission_percent !== undefined && body.commission_percent !== null && body.commission_percent !== ""
+        ? Number(body.commission_percent)
+        : null;
+    if (commissionPercentRaw !== null && (!Number.isFinite(commissionPercentRaw) || commissionPercentRaw < 0 || commissionPercentRaw > 100)) {
+      return badRequest("نسبة العمولة غير صحيحة");
     }
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
-    const ownerId = String(user.userId);
+    const userType = String(user.userType ?? "");
 
+    // Agency can create a property for a linked owner, and auto-assign itself to manage it.
+    if (userType === "agency") {
+      const officeId = user.officeId ? String(user.officeId) : null;
+      if (!officeId) return badRequest("office_id غير موجود");
+
+      const ownerIdRaw = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
+      if (!ownerIdRaw || !isUuid(ownerIdRaw)) return badRequest("يرجى اختيار المالك");
+
+      const linked = await ds.query(
+        "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
+        [officeId, ownerIdRaw]
+      );
+      if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+
+      if (commissionPercentRaw === null) return badRequest("نسبة العمولة مطلوبة");
+
+      const property = repo.create({
+        owner_id: ownerIdRaw,
+        managing_office_id: officeId,
+        name: body.name.trim(),
+        title: body.title?.trim() || null,
+        status: body.status ?? "vacant",
+        property_model_type: body.property_model_type ?? null,
+        region: body.region ?? null,
+        city: body.city ?? null,
+        neighborhood: body.neighborhood ?? null,
+        address: body.address?.trim() || null,
+        latitude: body.latitude !== undefined && body.latitude !== null && body.latitude !== "" ? Number(body.latitude) : null,
+        longitude: body.longitude !== undefined && body.longitude !== null && body.longitude !== "" ? Number(body.longitude) : null,
+        area_m2: body.area_m2 ? Number(body.area_m2) : null,
+        property_cost: body.property_cost ? Number(body.property_cost) : null,
+        units_count: body.units_count ?? 0,
+        apartments_count: body.apartments_count ?? 0,
+        shops_count: body.shops_count ?? 0,
+        other_units_count: body.other_units_count ?? 0,
+        unit_identifiers: body.unit_identifiers ?? null,
+        title_deed_number: body.title_deed_number ?? null,
+        water_account: body.water_account ?? null,
+        electricity_account: body.electricity_account ?? null,
+        description: body.description ?? null,
+        payment_frequency: body.payment_frequency?.trim() || null,
+        lessor_type: lessorType,
+        lessor_contact_id: lessorContactId,
+        commission_percent: commissionPercentRaw,
+      } as any);
+
+      await repo.save(property);
+
+      await ds.query(
+        `
+        INSERT INTO office_property_links (office_id, owner_id, property_id, commission_percent, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT DO NOTHING
+        `,
+        [officeId, ownerIdRaw, String((property as any).id), commissionPercentRaw]
+      );
+
+      return created(property);
+    }
+
+    // Owner flow (existing)
+    const managingOfficeIdRaw = typeof body.managing_office_id === "string" ? body.managing_office_id.trim() : "";
+    const managingOfficeId = managingOfficeIdRaw ? managingOfficeIdRaw : null;
+    if (managingOfficeId && !isUuid(managingOfficeId)) return badRequest("معرّف المكتب غير صحيح");
+
+    const ownerId = String(user.userId);
     const property = repo.create({
       owner_id: ownerId,
-      managing_office_id: body.managing_office_id ?? null,
+      managing_office_id: managingOfficeId,
       name: body.name.trim(),
       title: body.title?.trim() || null,
       status: body.status ?? "vacant",
@@ -129,19 +260,16 @@ export async function POST(req: NextRequest) {
       electricity_account: body.electricity_account ?? null,
       description: body.description ?? null,
       payment_frequency: body.payment_frequency?.trim() || null,
-      lessor_type: body.lessor_type === "office" || body.lessor_type === "owner" ? body.lessor_type : null,
-      lessor_contact_id: body.lessor_type === "office" && body.lessor_contact_id ? body.lessor_contact_id : null,
-      commission_percent:
-        body.commission_percent !== undefined && body.commission_percent !== null && body.commission_percent !== ""
-          ? Number(body.commission_percent)
-          : null,
+      lessor_type: lessorType,
+      lessor_contact_id: lessorContactId,
+      commission_percent: commissionPercentRaw,
     } as any);
 
     await repo.save(property);
 
     // If owner assigned a managing office, create/update the link so the agency can access the property.
-    const managingOfficeId = (property as any).managing_office_id ? String((property as any).managing_office_id) : null;
-    if (managingOfficeId) {
+    const managingOfficeIdSaved = (property as any).managing_office_id ? String((property as any).managing_office_id) : null;
+    if (managingOfficeIdSaved) {
       const commission =
         (property as any).commission_percent !== undefined && (property as any).commission_percent !== null && (property as any).commission_percent !== ""
           ? Number((property as any).commission_percent)
@@ -152,7 +280,7 @@ export async function POST(req: NextRequest) {
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT DO NOTHING
         `,
-        [managingOfficeId, ownerId, String((property as any).id), commission]
+        [managingOfficeIdSaved, ownerId, String((property as any).id), commission]
       );
     }
 
