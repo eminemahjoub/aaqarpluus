@@ -4,6 +4,7 @@ import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest 
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { z } from "zod";
 import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
+import { parsePagination, paginated } from "@/lib/pagination";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,24 +12,42 @@ export async function GET(req: NextRequest) {
     if (!user) return unauthorized();
 
     const ds = await getDataSource();
+    const { searchParams } = new URL(req.url);
+    const page = parsePagination(searchParams);
+    const search = page?.search ?? null;
 
     const propertyIds = await getAccessiblePropertyIds(ds, user);
     let properties: any[] = [];
     if (Array.isArray(propertyIds)) {
-      if (propertyIds.length === 0) return ok([]);
-      properties = await ds
+      if (propertyIds.length === 0) return ok(page ? paginated({ items: [], total: 0, page: page.page, limit: page.limit, search }) : []);
+      let qb = ds
         .getRepository("Property")
         .createQueryBuilder("p")
         .where("p.id IN (:...propertyIds)", { propertyIds })
-        .orderBy("p.created_at", "DESC")
-        .getMany();
+        .orderBy("p.created_at", "DESC");
+      if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
+      if (!page) {
+        properties = await qb.getMany();
+      } else {
+        const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
+        properties = items;
+        // We'll return paginated wrapper at the end.
+        Object.defineProperty(properties, "__pagination", { value: { total, page: page.page, limit: page.limit, search }, enumerable: false });
+      }
     } else {
-      properties = await ds
+      let qb = ds
         .getRepository("Property")
         .createQueryBuilder("p")
         .where("p.owner_id = :ownerId", { ownerId: user.userId })
-        .orderBy("p.created_at", "DESC")
-        .getMany();
+        .orderBy("p.created_at", "DESC");
+      if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
+      if (!page) {
+        properties = await qb.getMany();
+      } else {
+        const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
+        properties = items;
+        Object.defineProperty(properties, "__pagination", { value: { total, page: page.page, limit: page.limit, search }, enumerable: false });
+      }
     }
 
     // Attach active contract info per property
@@ -137,6 +156,10 @@ export async function GET(req: NextRequest) {
       managing_office_email: p.managing_office_id ? officeMap[String(p.managing_office_id)]?.email ?? null : null,
     }));
 
+    const meta = (properties as any).__pagination as any | undefined;
+    if (meta?.page && meta?.limit !== undefined) {
+      return ok(paginated({ items: result, total: Number(meta.total) || 0, page: meta.page, limit: meta.limit, search: meta.search }));
+    }
     return ok(result);
   } catch (err) {
     return serverError(err);

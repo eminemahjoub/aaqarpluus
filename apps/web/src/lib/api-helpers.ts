@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import { verifyToken, TOKEN_COOKIE, type JwtPayload } from "./auth";
+import { jsonResponse } from "./errors";
 
 export async function getUserFromRequest(req: NextRequest): Promise<JwtPayload | null> {
   // Support both cookie-based auth (browser) and Bearer token (API/curl/mobile)
@@ -22,37 +23,22 @@ export async function getUserFromCookies(): Promise<JwtPayload | null> {
 }
 
 export function unauthorized() {
-  return new Response(JSON.stringify({ error: "غير مصرح" }), {
-    status: 401,
-    headers: { "Content-Type": "application/json" },
-  });
+  return jsonResponse({ error: "غير مصرح", code: "UNAUTHORIZED" }, 401);
 }
 
 export function badRequest(message: string) {
-  return new Response(JSON.stringify({ error: message }), {
-    status: 400,
-    headers: { "Content-Type": "application/json" },
-  });
+  return jsonResponse({ error: message, code: "BAD_REQUEST" }, 400);
 }
 
 export function ok(data: unknown) {
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return jsonResponse(data, 200);
 }
 
 export function created(data: unknown) {
-  return new Response(JSON.stringify(data), {
-    status: 201,
-    headers: { "Content-Type": "application/json" },
-  });
+  return jsonResponse(data, 201);
 }
 
 export function serverError(error: unknown) {
   console.error(error);
-  return new Response(JSON.stringify({ error: "خطأ في الخادم" }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" },
-  });
+  return jsonResponse({ error: "خطأ في الخادم", code: "INTERNAL" }, 500);
 }
