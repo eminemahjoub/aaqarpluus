@@ -23,6 +23,7 @@ import {
   Clock,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { authFetch } from "@/lib/auth-fetch";
 // Report Types
 const reportCategories = [
   {
@@ -253,8 +254,8 @@ function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => vo
     let cancelled = false;
     void (async () => {
       const [propsRes, contactsRes] = await Promise.all([
-        fetch("/api/properties"),
-        fetch("/api/contacts"),
+        authFetch("/api/properties"),
+        authFetch("/api/contacts"),
       ]);
       if (cancelled) return;
       const [props, contacts] = await Promise.all([
@@ -281,7 +282,7 @@ function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => vo
     if (paymentStatus) params.set("payment_status", paymentStatus);
     if (contractStatus) params.set("contract_status", contractStatus);
 
-    const res = await fetch(`/api/reports?${params.toString()}`);
+    const res = await authFetch(`/api/reports?${params.toString()}`);
     if (!res.ok) return;
     const data = await res.json();
 

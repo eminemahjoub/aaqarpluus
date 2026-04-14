@@ -3,6 +3,7 @@
 import * as React from "react";
 import { User, Phone, Mail, Building2, Edit2, Check, X } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { authFetch } from "@/lib/auth-fetch";
 
 export function ProfileContent() {
   const [loading, setLoading] = React.useState(true);
@@ -19,7 +20,7 @@ export function ProfileContent() {
   React.useEffect(() => {
     async function loadUser() {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await authFetch("/api/auth/me");
         if (!res.ok) return;
         const user = await res.json();
         const data = {
@@ -40,7 +41,7 @@ export function ProfileContent() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch("/api/auth/me", {
+      const res = await authFetch("/api/auth/me", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullName: formData.fullName, phone: formData.phone }),

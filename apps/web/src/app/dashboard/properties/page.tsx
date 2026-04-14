@@ -113,7 +113,7 @@ function useOfficeContacts(isOpen: boolean) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/contacts");
+        const res = await authFetch("/api/contacts");
         if (!res.ok) return;
         const data: unknown = await res.json();
         const list = Array.isArray(data) ? data : [];
@@ -371,7 +371,7 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
     if (!formData.name.trim()) return;
     setSaving(true);
     void (async () => {
-      const res = await fetch("/api/properties", {
+      const res = await authFetch("/api/properties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -397,7 +397,7 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
         fd.append("file", file);
         fd.append("property_id", inserted.id);
         fd.append("image_type", "gallery");
-        await fetch("/api/property-images", { method: "POST", body: fd });
+        await authFetch("/api/property-images", { method: "POST", body: fd });
       }
       onClose();
       router.push(`/dashboard/properties/units?property_id=${inserted.id}`);
@@ -657,7 +657,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
     void (async () => {
       try {
         if (userType === "agency") {
-          const res = await fetch("/api/offices/owners");
+          const res = await authFetch("/api/offices/owners");
           const data = res.ok ? await res.json() : [];
           const owners = Array.isArray(data)
             ? data.map((r: any) => ({
@@ -669,7 +669,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
             : [];
           if (!cancelled) setLinkedOwners(owners);
         } else {
-          const res = await fetch("/api/owner/agencies");
+          const res = await authFetch("/api/owner/agencies");
           const data = res.ok ? await res.json() : [];
           const offices = Array.isArray(data)
             ? data.map((g: any) => ({ officeId: String(g.officeId), officeName: String(g.officeName ?? "—") }))
@@ -732,7 +732,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
     setStructureError(null);
     setSaving(true);
 
-    const res = await fetch("/api/properties", {
+    const res = await authFetch("/api/properties", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -782,7 +782,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
       fd.append("file", file);
       fd.append("property_id", inserted.id);
       fd.append("image_type", "gallery");
-      await fetch("/api/property-images", { method: "POST", body: fd });
+      await authFetch("/api/property-images", { method: "POST", body: fd });
     }
     onClose();
     router.push(`/dashboard/properties/units?property_id=${inserted.id}`);
@@ -1243,7 +1243,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/owner/agencies");
+        const res = await authFetch("/api/owner/agencies");
         const data = res.ok ? await res.json() : [];
         const offices = Array.isArray(data)
           ? data.map((g: any) => ({ officeId: String(g.officeId), officeName: String(g.officeName ?? "—") }))
@@ -1261,7 +1261,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void (async () => {
-      await fetch(`/api/properties/${property.id}`, {
+      await authFetch(`/api/properties/${property.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1291,7 +1291,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
         fd.append("file", file);
         fd.append("property_id", property.id);
         fd.append("image_type", "gallery");
-        await fetch("/api/property-images", { method: "POST", body: fd });
+        await authFetch("/api/property-images", { method: "POST", body: fd });
       }
       onClose();
     })();

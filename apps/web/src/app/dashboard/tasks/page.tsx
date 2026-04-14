@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { occursOnCalendarDay } from "@/lib/recurring-tasks";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 import {
   Plus,
   Calendar,
@@ -288,7 +289,7 @@ function TaskModal({
     let cancelled = false;
     void (async () => {
       try {
-        const r = await fetch(`/api/documents?property_id=${encodeURIComponent(pid)}`);
+        const r = await authFetch(`/api/documents?property_id=${encodeURIComponent(pid)}`);
         const d = r.ok ? await r.json() : [];
         if (!cancelled) setPropertyDocs(Array.isArray(d) ? d : []);
       } catch {
@@ -306,7 +307,7 @@ function TaskModal({
       const fd = new FormData();
       fd.append("file", file);
       if (propertyId) fd.append("property_id", propertyId);
-      const res = await fetch("/api/documents", { method: "POST", body: fd });
+      const res = await authFetch("/api/documents", { method: "POST", body: fd });
       if (!res.ok) continue;
       const doc = await res.json();
       if (doc?.id && doc?.public_url) {
@@ -760,10 +761,10 @@ export default function TasksPage() {
       setLoading(true);
       try {
         const [tasksRes, propsRes, unitsRes, contactsRes] = await Promise.all([
-          fetch("/api/tasks"),
-          fetch("/api/properties"),
-          fetch("/api/units"),
-          fetch("/api/contacts"),
+          authFetch("/api/tasks"),
+          authFetch("/api/properties"),
+          authFetch("/api/units"),
+          authFetch("/api/contacts"),
         ]);
         if (cancelled) return;
 
@@ -876,7 +877,7 @@ export default function TasksPage() {
       const extraPayload = taskData.extra && typeof taskData.extra === "object" ? taskData.extra : null;
 
       if (editingTask) {
-        const res = await fetch(`/api/tasks/${editingTask.id}`, {
+        const res = await authFetch(`/api/tasks/${editingTask.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -905,7 +906,7 @@ export default function TasksPage() {
           );
         }
       } else {
-        const res = await fetch("/api/tasks", {
+        const res = await authFetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -20,6 +20,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 
 // Types
 interface Document {
@@ -394,8 +395,8 @@ export function DocumentsContent() {
       setLoading(true);
       try {
         const [docsRes, propsRes] = await Promise.all([
-          fetch("/api/documents"),
-          fetch("/api/properties"),
+          authFetch("/api/documents"),
+          authFetch("/api/properties"),
         ]);
         if (cancelled) return;
         const [docs, props] = await Promise.all([
@@ -465,7 +466,7 @@ export function DocumentsContent() {
         formData.append("file", file);
         if (propertyId) formData.append("property_id", propertyId);
 
-        const res = await fetch("/api/documents", { method: "POST", body: formData });
+        const res = await authFetch("/api/documents", { method: "POST", body: formData });
         if (!res.ok) continue;
         const inserted = await res.json();
 

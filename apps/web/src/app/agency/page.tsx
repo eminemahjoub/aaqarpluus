@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 import { AgencyDashboard } from "@/components/dashboard/AgencyDashboard";
 import { OwnerHomeDashboard } from "@/components/dashboard/OwnerHomeDashboard";
+import { authFetch } from "@/lib/auth-fetch";
 
 export default function AgencyHome() {
   const [allowed, setAllowed] = React.useState<boolean | null>(null);
@@ -12,7 +13,7 @@ export default function AgencyHome() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await authFetch("/api/auth/me");
         if (!res.ok) {
           if (!cancelled) setAllowed(false);
           return;

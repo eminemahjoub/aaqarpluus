@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { authFetch } from "@/lib/auth-fetch";
 
 export default function AgencyMembersPage() {
   const [loading, setLoading] = React.useState(true);
@@ -11,7 +12,7 @@ export default function AgencyMembersPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const res = await fetch("/api/offices/members");
+      const res = await authFetch("/api/offices/members");
       const data = res.ok ? await res.json() : [];
       setRows(Array.isArray(data) ? data : []);
     } finally {
@@ -76,7 +77,7 @@ export default function AgencyMembersPage() {
             onClick={() => {
               setError(null);
               void (async () => {
-                const res = await fetch("/api/offices/members", {
+                const res = await authFetch("/api/offices/members", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(form),

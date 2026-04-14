@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
+import { authFetch } from "@/lib/auth-fetch";
 
 const links = [
   { href: "/#features", label: "الميزات" },
@@ -23,7 +24,7 @@ export function Navbar() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    fetch("/api/auth/me")
+    authFetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         setUser(data ?? null);

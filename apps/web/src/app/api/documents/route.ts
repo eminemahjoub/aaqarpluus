@@ -2,8 +2,16 @@ import { NextRequest } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+import { UuidSchema, badZod } from "@/lib/validation";
+import { z } from "zod";
+
+const UploadMetaSchema = z.object({
+  property_id: UuidSchema,
+  contract_id: UuidSchema.optional().nullable(),
+  category: z.string().trim().optional().nullable(),
+});
 
 export async function GET(req: NextRequest) {
   try {
@@ -51,19 +59,22 @@ export async function POST(req: NextRequest) {
     const category = formData.get("category") as string | null;
 
     if (!file) {
-      return new Response(JSON.stringify({ error: "الملف مطلوب" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return badRequest("الملف مطلوب");
     }
 
     const ds = await getDataSource();
-    const pid = propertyId ? String(propertyId) : null;
-    if (!pid) return unauthorized();
+    const metaParsed = UploadMetaSchema.safeParse({
+      property_id: propertyId,
+      contract_id: contractId || null,
+      category: category || null,
+    });
+    if (!metaParsed.success) return badRequest(badZod(metaParsed.error));
+
+    const pid = String(metaParsed.data.property_id);
     const can = await assertAgencyCanAccessProperty(ds, user, pid);
     if (!can) return unauthorized();
     const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
-    if (!prop) return unauthorized();
+    if (!prop) return badRequest("العقار غير موجود");
     const ownerId = String((prop as any).owner_id);
 
     const uploadsDir = join(process.cwd(), "public", "uploads", ownerId);
@@ -91,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     const doc = repo.create({
       owner_id: ownerId,
-      property_id: propertyId || null,
+      property_id: pid,
       file_name: file.name,
       mime_type: file.type || null,
       object_path: filePath,
@@ -99,15 +110,18 @@ export async function POST(req: NextRequest) {
       size_bytes: file.size,
       bucket: "local",
       type,
-      category: category || null,
+      category: metaParsed.data.category || null,
     } as any);
 
     await repo.save(doc);
 
     // Patch contract_id via raw SQL in case TypeORM entity metadata cache is stale
-    if (contractId) {
-      await ds.query("UPDATE documents SET contract_id = $1 WHERE id = $2", [contractId, (doc as any).id]);
-      (doc as any).contract_id = contractId;
+    if (metaParsed.data.contract_id) {
+      await ds.query("UPDATE documents SET contract_id = $1 WHERE id = $2", [
+        metaParsed.data.contract_id,
+        (doc as any).id,
+      ]);
+      (doc as any).contract_id = metaParsed.data.contract_id;
     }
 
     return created({ ...(doc as any), property: null });

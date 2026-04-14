@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { authFetch } from "@/lib/auth-fetch";
 
 type DbProperty = {
   id: string;
@@ -220,14 +221,14 @@ export default function UnitsBuilderPage() {
           rent_amount: Number(u.priceSar) || 0,
         };
         // Try PUT first (update existing), fall back to POST for new units
-        const res = await fetch(`/api/units/${u.id}`, {
+        const res = await authFetch(`/api/units/${u.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!res.ok) {
           // Might be a client-side generated ID; try to create
-          await fetch("/api/units", {
+          await authFetch("/api/units", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -251,7 +252,7 @@ export default function UnitsBuilderPage() {
         fd.append("unit_id", unitId);
         fd.append("component_id", componentId);
         fd.append("image_type", "component");
-        const res = await fetch("/api/property-images", { method: "POST", body: fd });
+        const res = await authFetch("/api/property-images", { method: "POST", body: fd });
         if (!res.ok) continue;
         const img = await res.json();
         uploaded.push({ id: String(img.id), url: String(img.public_url) });
@@ -295,8 +296,8 @@ export default function UnitsBuilderPage() {
     async function load() {
       setLoading(true);
       const [propRes, unitsRes] = await Promise.all([
-        fetch(`/api/properties/${propertyId}`),
-        fetch(`/api/units?property_id=${propertyId}`),
+        authFetch(`/api/properties/${propertyId}`),
+        authFetch(`/api/units?property_id=${propertyId}`),
       ]);
       if (cancelled) return;
       const [propData, dbUnits] = await Promise.all([
@@ -333,7 +334,7 @@ export default function UnitsBuilderPage() {
         // Create units via API
         const createdUnits = await Promise.all(
           generatedUnits.map((row) =>
-            fetch("/api/units", {
+            authFetch("/api/units", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(row),
@@ -366,7 +367,7 @@ export default function UnitsBuilderPage() {
       const unitImagesMap: Record<string, Record<string, ComponentImage[]>> = {};
       await Promise.all(
         (dbUnits ?? []).map(async (u: any) => {
-          const imgRes = await fetch(`/api/property-images?unit_id=${u.id}&image_type=component`);
+          const imgRes = await authFetch(`/api/property-images?unit_id=${u.id}&image_type=component`);
           if (!imgRes.ok) return;
           const imgs: any[] = await imgRes.json();
           const byComponent: Record<string, ComponentImage[]> = {};

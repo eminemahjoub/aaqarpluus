@@ -3,13 +3,14 @@
 import * as React from "react";
 import { Building, MapPin, Eye } from "lucide-react";
 import Link from "next/link";
+import { authFetch } from "@/lib/auth-fetch";
 
 export function PersonalDashboard() {
   const [loading, setLoading] = React.useState(true);
   const [properties, setProperties] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    fetch("/api/properties")
+    authFetch("/api/properties")
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setProperties((data ?? []).slice(0, 6)))
       .catch(() => {})

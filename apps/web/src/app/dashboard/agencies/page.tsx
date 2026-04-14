@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Loader2, Phone, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { authFetch } from "@/lib/auth-fetch";
 
 type OfficeGroup = {
   officeId: string;
@@ -36,7 +37,7 @@ export default function OwnerAgenciesPage() {
     setLoading(true);
     setError(null);
     try {
-      const gRes = await fetch("/api/owner/agencies");
+      const gRes = await authFetch("/api/owner/agencies");
       const g = gRes.ok ? await gRes.json() : [];
       const nextGroups: OfficeGroup[] = Array.isArray(g) ? g : [];
       setGroups(nextGroups);
@@ -61,7 +62,7 @@ export default function OwnerAgenciesPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/owner/agencies", {
+      const res = await authFetch("/api/owner/agencies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agencyPhone: phone }),
@@ -84,7 +85,7 @@ export default function OwnerAgenciesPage() {
       const url = new URL("/api/owner/agencies", window.location.origin);
       url.searchParams.set("office_id", officeId);
       if (propertyId) url.searchParams.set("property_id", propertyId);
-      const res = await fetch(url.toString(), { method: "DELETE" });
+      const res = await authFetch(url.toString(), { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return setError(String(data?.error ?? "تعذّر فك الربط"));
       await loadAll();

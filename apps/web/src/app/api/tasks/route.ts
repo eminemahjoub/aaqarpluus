@@ -2,6 +2,22 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+import { z } from "zod";
+import { UuidSchema, badZod } from "@/lib/validation";
+
+const CreateTaskSchema = z.object({
+  title: z.string().trim().min(1, "عنوان المهمة مطلوب"),
+  description: z.string().optional().nullable(),
+  due_date: z.string().optional().nullable(),
+  due_date_hijri: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  priority: z.string().optional().nullable(),
+  cost_sar: z.union([z.number(), z.string()]).optional().nullable(),
+  property_id: UuidSchema.optional().nullable(),
+  unit_id: UuidSchema.optional().nullable(),
+  contact_id: UuidSchema.optional().nullable(),
+  extra: z.any().optional().nullable(),
+});
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,24 +26,22 @@ export async function GET(req: NextRequest) {
 
     const ds = await getDataSource();
     const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const tasks = await ds
+    let qb = ds
       .getRepository("Task")
       .createQueryBuilder("t")
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
-      .orderBy("t.created_at", "DESC")
-      .getMany();
+      .orderBy("t.created_at", "DESC");
 
     if (Array.isArray(propertyIds)) {
       if (propertyIds.length === 0) return ok([]);
-      const filtered = (tasks ?? []).filter((t: any) => {
-        const pid = String(t.property_id ?? t.property?.id ?? "");
-        return !pid ? false : propertyIds.includes(pid);
-      });
-      return ok(filtered);
+      qb = qb.where("t.property_id IN (:...propertyIds)", { propertyIds });
+    } else {
+      qb = qb.where("t.owner_id = :ownerId", { ownerId: user.userId });
     }
 
+    const tasks = await qb.getMany();
     return ok(tasks);
   } catch (err) {
     return serverError(err);
@@ -39,8 +53,10 @@ export async function POST(req: NextRequest) {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
 
-    const body = await req.json();
-    if (!body.title?.trim()) return badRequest("عنوان المهمة مطلوب");
+    const raw = await req.json();
+    const parsed = CreateTaskSchema.safeParse(raw);
+    if (!parsed.success) return badRequest(badZod(parsed.error));
+    const body = parsed.data;
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
@@ -66,7 +82,7 @@ export async function POST(req: NextRequest) {
       due_date_hijri: body.due_date_hijri ?? null,
       status: body.status ?? "pending",
       priority: body.priority ?? "medium",
-      cost_sar: body.cost_sar ?? 0,
+      cost_sar: body.cost_sar != null && String(body.cost_sar).trim() !== "" ? Number(body.cost_sar) : 0,
       property_id: body.property_id ?? null,
       unit_id: body.unit_id ?? null,
       contact_id: body.contact_id ?? null,

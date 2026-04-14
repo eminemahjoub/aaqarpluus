@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { authFetch } from "@/lib/auth-fetch";
 
 export default function AgencyOwnersPage() {
   const [loading, setLoading] = React.useState(true);
@@ -11,7 +12,7 @@ export default function AgencyOwnersPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const res = await fetch("/api/offices/owners");
+      const res = await authFetch("/api/offices/owners");
       const data = res.ok ? await res.json() : [];
       setRows(Array.isArray(data) ? data : []);
     } finally {
@@ -46,7 +47,7 @@ export default function AgencyOwnersPage() {
             onClick={() => {
               setError(null);
               void (async () => {
-                const res = await fetch("/api/offices/owners", {
+                const res = await authFetch("/api/offices/owners", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ ownerEmail }),
@@ -100,7 +101,7 @@ export default function AgencyOwnersPage() {
                         type="button"
                         onClick={() => {
                           void (async () => {
-                            await fetch(`/api/offices/owners/${r.link_id}`, { method: "DELETE" });
+                            await authFetch(`/api/offices/owners/${r.link_id}`, { method: "DELETE" });
                             await refresh();
                           })();
                         }}
