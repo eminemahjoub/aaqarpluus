@@ -1,18 +1,36 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDataSource } from "@/lib/db/data-source";
-import { signToken, TOKEN_COOKIE } from "@/lib/auth";
+import { signAccessToken, signRefreshToken, TOKEN_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { ok, badRequest, serverError } from "@/lib/api-helpers";
+import { z } from "zod";
+import { badZod } from "@/lib/validation";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+function authCookie(name: string, token: string, maxAgeSeconds: number) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  // Lax is OK for top-level navigations; HttpOnly prevents JS access.
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAgeSeconds}`;
+}
+
+const LoginSchema = z.object({
+  identifier: z.string().trim().min(1, "البريد الإلكتروني/رقم الجوال مطلوب"),
+  password: z.string().min(1, "كلمة المرور مطلوبة"),
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const rawIdentifier = String(body.identifier ?? body.email ?? "").trim();
-    const password = String(body.password ?? "");
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (!checkRateLimit(`login:${ip}`, 10, 300)) return badRequest("محاولات كثيرة، حاول لاحقاً");
 
-    if (!rawIdentifier || !password) {
-      return badRequest("البريد الإلكتروني/رقم الجوال وكلمة المرور مطلوبان");
-    }
+    const body = await req.json();
+    const parsed = LoginSchema.safeParse({
+      identifier: body.identifier ?? body.email ?? "",
+      password: body.password ?? "",
+    });
+    if (!parsed.success) return badRequest(badZod(parsed.error));
+    const rawIdentifier = parsed.data.identifier;
+    const password = parsed.data.password;
 
     const normalizePhone = (s: string) => {
       const p = s.replace(/\s+/g, "");
@@ -46,15 +64,21 @@ export async function POST(req: NextRequest) {
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
 
-    const token = await signToken({
+    const accessToken = await signAccessToken({
       userId: (user as any).id,
       email: (user as any).email,
       userType: (user as any).user_type,
       officeId: (user as any).office_id ?? null,
     });
 
+    const tokenVersion = Number((user as any).token_version) || 0;
+    const refreshToken = await signRefreshToken({
+      userId: (user as any).id,
+      tokenVersion,
+    });
+
     const response = ok({
-      token,
+      accessToken,
       user: {
         id: (user as any).id,
         email: (user as any).email,
@@ -64,10 +88,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    response.headers.set(
-      "Set-Cookie",
-      `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`
-    );
+    response.headers.append("Set-Cookie", authCookie(TOKEN_COOKIE, accessToken, 15 * 60));
+    response.headers.append("Set-Cookie", authCookie(REFRESH_COOKIE, refreshToken, 7 * 24 * 3600));
     return response;
   } catch (err) {
     return serverError(err);

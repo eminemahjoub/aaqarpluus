@@ -1,37 +1,35 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDataSource } from "@/lib/db/data-source";
-import { signToken, TOKEN_COOKIE } from "@/lib/auth";
+import { signAccessToken, signRefreshToken, TOKEN_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { ok, badRequest, serverError } from "@/lib/api-helpers";
+import { z } from "zod";
+import { EmailSchema, SaudiPhoneSchema, badZod } from "@/lib/validation";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+function authCookie(name: string, token: string, maxAgeSeconds: number) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAgeSeconds}`;
+}
+
+const SignupSchema = z.object({
+  email: EmailSchema,
+  password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل"),
+  fullName: z.string().trim().min(1, "الاسم مطلوب"),
+  phone: SaudiPhoneSchema,
+  userType: z.enum(["owner", "agency"]).default("owner"),
+  officeName: z.string().trim().optional(),
+});
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (!checkRateLimit(`signup:${ip}`, 10, 300)) return badRequest("طلبات كثيرة، حاول لاحقاً");
+
     const body = await req.json();
-    const email = String(body.email ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
-    const fullName = String(body.fullName ?? "").trim();
-    const rawPhone = String(body.phone ?? "").trim();
-    const userTypeRaw = String(body.userType ?? "owner");
-    const userType = userTypeRaw === "agency" ? "agency" : "owner";
-
-    if (!email || !password || !fullName || !rawPhone) {
-      return badRequest("الاسم والبريد الإلكتروني ورقم الجوال وكلمة المرور مطلوبة");
-    }
-    if (password.length < 6) {
-      return badRequest("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-    }
-
-    // Normalize phone to E.164 (Saudi) if possible.
-    const phone = (() => {
-      const p = rawPhone.replace(/\s+/g, "");
-      if (/^05\d{8}$/.test(p)) return `+966${p.substring(1)}`;
-      if (/^\+9665\d{8}$/.test(p)) return p;
-      return null;
-    })();
-
-    if (!phone) {
-      return badRequest("رقم الجوال غير صحيح. أدخل رقم يبدأ بـ 05 (10 أرقام) أو بصيغة +9665XXXXXXXX");
-    }
+    const parsed = SignupSchema.safeParse(body);
+    if (!parsed.success) return badRequest(badZod(parsed.error));
+    const { email, password, fullName, phone, userType, officeName } = parsed.data;
 
     const ds = await getDataSource();
     const repo = ds.getRepository("User");
@@ -53,7 +51,7 @@ export async function POST(req: NextRequest) {
     if (userType === "agency") {
       const officeRepo = ds.getRepository("Office");
       const office = officeRepo.create({
-        name: String(body.officeName ?? fullName ?? "مكتب").trim() || "مكتب",
+        name: String(officeName ?? fullName ?? "مكتب").trim() || "مكتب",
       } as any);
       await officeRepo.save(office);
       officeId = (office as any).id ? String((office as any).id) : null;
@@ -70,15 +68,21 @@ export async function POST(req: NextRequest) {
 
     await repo.save(user);
 
-    const token = await signToken({
+    const accessToken = await signAccessToken({
       userId: (user as any).id,
       email: (user as any).email,
       userType: (user as any).user_type,
       officeId: (user as any).office_id ?? null,
     });
 
+    const tokenVersion = Number((user as any).token_version) || 0;
+    const refreshToken = await signRefreshToken({
+      userId: (user as any).id,
+      tokenVersion,
+    });
+
     const response = ok({
-      token,
+      accessToken,
       user: {
         id: (user as any).id,
         email: (user as any).email,
@@ -88,10 +92,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    response.headers.set(
-      "Set-Cookie",
-      `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`
-    );
+    response.headers.append("Set-Cookie", authCookie(TOKEN_COOKIE, accessToken, 15 * 60));
+    response.headers.append("Set-Cookie", authCookie(REFRESH_COOKIE, refreshToken, 7 * 24 * 3600));
     return response;
   } catch (err) {
     return serverError(err);

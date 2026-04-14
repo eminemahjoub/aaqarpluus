@@ -14,6 +14,7 @@ export const UserSchema = schema({
     full_name: { type: "varchar", length: 255, nullable: true },
     phone: { type: "varchar", length: 50, nullable: true },
     user_type: { type: "varchar", length: 50, default: "owner" },
+    token_version: { type: "int", default: 0 },
     // For agency (office) members only. Owners/personal typically have null.
     office_id: { type: "uuid", nullable: true },
     created_at: { type: "timestamp", createDate: true },

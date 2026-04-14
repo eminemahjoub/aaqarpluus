@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
+import { z } from "zod";
+import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
   try {
@@ -141,13 +143,42 @@ export async function GET(req: NextRequest) {
   }
 }
 
+const CreatePropertySchema = z.object({
+  owner_id: z.string().optional(),
+  name: z.string().trim().min(1),
+  title: z.string().trim().nullable().optional(),
+  status: z.string().optional(),
+  region: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  neighborhood: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  property_model_type: z.string().nullable().optional(),
+  apartments_count: z.number().or(z.string()).optional(),
+  shops_count: z.number().or(z.string()).optional(),
+  other_units_count: z.number().or(z.string()).optional(),
+  unit_identifiers: z.string().nullable().optional(),
+  units_count: z.number().or(z.string()).optional(),
+  area_m2: z.number().or(z.string()).nullable().optional(),
+  property_cost: z.number().or(z.string()).nullable().optional(),
+  water_account: z.string().nullable().optional(),
+  electricity_account: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  payment_frequency: z.string().nullable().optional(),
+  lessor_type: z.enum(["office", "owner"]).nullable().optional(),
+  lessor_contact_id: z.string().nullable().optional(),
+  managing_office_id: z.string().nullable().optional(),
+  commission_percent: z.any().nullable().optional(),
+});
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
 
     const body = await req.json();
-    if (!body.name?.trim()) return badRequest("اسم العقار مطلوب");
+    const parsed = CreatePropertySchema.safeParse(body);
+    if (!parsed.success) return badRequest(badZod(parsed.error));
+    if (!parsed.data.name?.trim()) return badRequest("اسم العقار مطلوب");
 
     const isUuid = (v: string) =>
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -159,9 +190,11 @@ export async function POST(req: NextRequest) {
 
     const commissionPercentRaw =
       body.commission_percent !== undefined && body.commission_percent !== null && body.commission_percent !== ""
-        ? Number(body.commission_percent)
+        ? CommissionPercentSchema.safeParse(body.commission_percent).success
+          ? Number(CommissionPercentSchema.parse(body.commission_percent))
+          : null
         : null;
-    if (commissionPercentRaw !== null && (!Number.isFinite(commissionPercentRaw) || commissionPercentRaw < 0 || commissionPercentRaw > 100)) {
+    if (body.commission_percent !== undefined && body.commission_percent !== null && body.commission_percent !== "" && commissionPercentRaw === null) {
       return badRequest("نسبة العمولة غير صحيحة");
     }
 
