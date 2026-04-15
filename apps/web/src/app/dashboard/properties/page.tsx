@@ -5234,9 +5234,5 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
 }
 
 export default function PropertiesPage() {
-  return (
-    <DashboardLayout role="owner">
-      <PropertiesContent />
-    </DashboardLayout>
-  );
+  return <PropertiesContent />;
 }

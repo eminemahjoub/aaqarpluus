@@ -200,9 +200,5 @@ export function ContactsContent() {
 }
 
 export default function ContactsPage() {
-  return (
-    <DashboardLayout role="owner">
-      <ContactsContent />
-    </DashboardLayout>
-  );
+  return <ContactsContent />;
 }

@@ -171,9 +171,5 @@ export function ProfileContent() {
 }
 
 export default function ProfilePage() {
-  return (
-    <DashboardLayout role="owner">
-      <ProfileContent />
-    </DashboardLayout>
-  );
+  return <ProfileContent />;
 }

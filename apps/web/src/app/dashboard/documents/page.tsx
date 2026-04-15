@@ -814,9 +814,5 @@ export function DocumentsContent() {
 }
 
 export default function DocumentsPage() {
-  return (
-    <DashboardLayout role="owner">
-      <DocumentsContent />
-    </DashboardLayout>
-  );
+  return <DocumentsContent />;
 }

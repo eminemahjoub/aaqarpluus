@@ -216,11 +216,7 @@ export function ReportsContent() {
 }
 
 export default function ReportsPage() {
-  return (
-    <DashboardLayout role="owner">
-      <ReportsContent />
-    </DashboardLayout>
-  );
+  return <ReportsContent />;
 }
 
 function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => void }) {

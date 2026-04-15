@@ -95,6 +95,103 @@ export const PlatformSettingSchema = schema({
   },
 });
 
+export const ConversationSchema = schema({
+  name: "Conversation",
+  tableName: "conversations",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    type: { type: "varchar", length: 30, default: "direct" }, // direct|property|unit|support
+    property_id: { type: "uuid", nullable: true },
+    unit_id: { type: "uuid", nullable: true },
+    subject: { type: "varchar", length: 255, nullable: true },
+    created_by: { type: "uuid" },
+    is_archived: { type: "boolean", default: false },
+    last_message_at: { type: "timestamp", nullable: true },
+    created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+  relations: {
+    property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
+    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
+    creator: { type: "many-to-one", target: "User", joinColumn: { name: "created_by" } },
+  },
+});
+
+export const ConversationParticipantSchema = schema({
+  name: "ConversationParticipant",
+  tableName: "conversation_participants",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    conversation_id: { type: "uuid" },
+    user_id: { type: "uuid" },
+    role: { type: "varchar", length: 30 }, // owner|agency|admin
+    joined_at: { type: "timestamp", createDate: true },
+    last_read_at: { type: "timestamp", nullable: true },
+    is_muted: { type: "boolean", default: false },
+  },
+  indices: [
+    { name: "idx_conv_participants_conv", columns: ["conversation_id"] as any },
+    { name: "idx_conv_participants_user", columns: ["user_id"] as any },
+    { name: "ux_conv_participants_conv_user", columns: ["conversation_id", "user_id"] as any, unique: true },
+  ],
+  relations: {
+    conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
+    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
+  },
+});
+
+export const MessageSchema = schema({
+  name: "Message",
+  tableName: "messages",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    conversation_id: { type: "uuid" },
+    sender_id: { type: "uuid" },
+    content: { type: "text" },
+    type: { type: "varchar", length: 20, default: "text" }, // text|image|file|system
+    file_url: { type: "varchar", length: 1000, nullable: true },
+    file_name: { type: "varchar", length: 255, nullable: true },
+    file_size: { type: "int", nullable: true },
+    file_type: { type: "varchar", length: 120, nullable: true },
+    is_edited: { type: "boolean", default: false },
+    edited_at: { type: "timestamp", nullable: true },
+    is_deleted: { type: "boolean", default: false },
+    read_by: { type: "jsonb", default: () => "'[]'::jsonb" },
+    metadata: { type: "jsonb", nullable: true },
+    created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+  indices: [
+    { name: "idx_messages_conv_created", columns: ["conversation_id", "created_at"] as any },
+  ],
+  relations: {
+    conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
+    sender: { type: "many-to-one", target: "User", joinColumn: { name: "sender_id" } },
+  },
+});
+
+export const MessageNotificationSchema = schema({
+  name: "MessageNotification",
+  tableName: "message_notifications",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    user_id: { type: "uuid" },
+    conversation_id: { type: "uuid" },
+    message_id: { type: "uuid" },
+    is_read: { type: "boolean", default: false },
+    created_at: { type: "timestamp", createDate: true },
+  },
+  indices: [
+    { name: "idx_msg_notif_user_read", columns: ["user_id", "is_read"] as any },
+    { name: "idx_msg_notif_conv", columns: ["conversation_id"] as any },
+  ],
+  relations: {
+    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
+    conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
+    message: { type: "many-to-one", target: "Message", joinColumn: { name: "message_id" }, onDelete: "CASCADE" },
+  },
+});
+
 export const OfficeOwnerLinkSchema = schema({
   name: "OfficeOwnerLink",
   tableName: "office_owner_links",

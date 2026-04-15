@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { occursOnCalendarDay } from "@/lib/recurring-tasks";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
@@ -1016,7 +1015,6 @@ export default function TasksPage() {
   };
 
   return (
-    <DashboardLayout role="owner">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -1395,7 +1393,6 @@ export default function TasksPage() {
             )}
           </div>
         </div>
-      </div>
 
       {/* Modals */}
       <TaskModal
@@ -1416,6 +1413,6 @@ export default function TasksPage() {
         onClose={() => setDeletingTask(null)}
         onConfirm={handleDeleteTask}
       />
-    </DashboardLayout>
+      </div>
   );
 }

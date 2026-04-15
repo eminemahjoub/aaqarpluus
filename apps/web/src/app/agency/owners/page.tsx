@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { MessageSquare } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
+import { useRouter } from "next/navigation";
 
 export default function AgencyOwnersPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Array<{ link_id: string; owner_id: string; full_name: string | null; email: string; phone: string | null }>>([]);
   const [ownerEmail, setOwnerEmail] = React.useState("");
@@ -97,6 +100,26 @@ export default function AgencyOwnersPage() {
                       {r.phone ?? "—"}
                     </td>
                     <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            const res = await authFetch("/api/messages/conversations", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ type: "direct", participant_ids: [String(r.owner_id)] }),
+                            });
+                            const j = await res.json().catch(() => ({}));
+                            const convId = String(j?.id ?? "");
+                            if (convId) router.push(`/agency/messages?c=${encodeURIComponent(convId)}`);
+                          })();
+                        }}
+                        className="ml-2 inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-200 dark:hover:bg-emerald-900/20"
+                        title="مراسلة المالك"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        رسالة
+                      </button>
                       <button
                         type="button"
                         onClick={() => {

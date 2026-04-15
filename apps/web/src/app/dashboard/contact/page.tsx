@@ -154,9 +154,5 @@ function ContactContent() {
 }
 
 export default function ContactPage() {
-  return (
-    <DashboardLayout role="owner">
-      <ContactContent />
-    </DashboardLayout>
-  );
+  return <ContactContent />;
 }

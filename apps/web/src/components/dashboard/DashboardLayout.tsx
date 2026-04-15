@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, MessageSquare } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { authFetch } from "@/lib/auth-fetch";
+import { useUnreadCount } from "@/hooks/useUnreadCount";
+import Link from "next/link";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -16,6 +18,7 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const { totalUnread } = useUnreadCount();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -112,6 +115,19 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
             <h1 className="text-lg font-semibold text-gray-700 dark:text-gray-200 lg:hidden">
               لوحة التحكم
             </h1>
+
+            <Link
+              href={resolvedRole === "agency" ? "/agency/messages" : "/dashboard/messages"}
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#102318] dark:text-gray-200 dark:hover:bg-white/5"
+              aria-label="الرسائل"
+            >
+              <MessageSquare className="h-5 w-5" />
+              {totalUnread > 0 ? (
+                <span className="absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              ) : null}
+            </Link>
 
             <ThemeToggle />
 

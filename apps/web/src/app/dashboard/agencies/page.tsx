@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Phone, Trash2 } from "lucide-react";
+import { Loader2, MessageSquare, Phone, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { authFetch } from "@/lib/auth-fetch";
+import { useRouter } from "next/navigation";
 
 type OfficeGroup = {
   officeId: string;
@@ -25,6 +26,7 @@ function cls(...parts: Array<string | false | null | undefined>) {
 }
 
 export default function OwnerAgenciesPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [groups, setGroups] = React.useState<OfficeGroup[]>([]);
 
@@ -95,7 +97,6 @@ export default function OwnerAgenciesPage() {
   }
 
   return (
-    <DashboardLayout role="owner">
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -205,6 +206,27 @@ export default function OwnerAgenciesPage() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    void (async () => {
+                                      const res = await authFetch("/api/messages/conversations", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ type: "direct", participant_ids: [String(g.officeId)] }),
+                                      });
+                                      const j = await res.json().catch(() => ({}));
+                                      const convId = String(j?.id ?? "");
+                                      if (convId) router.push(`/dashboard/messages?c=${encodeURIComponent(convId)}`);
+                                    })();
+                                  }}
+                                  className="ml-2 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-200 dark:hover:bg-emerald-900/20"
+                                  title="مراسلة المكتب"
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                  رسالة
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     void handleUnlink(String(g.officeId));
                                   }}
                                   className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-950/40"
@@ -225,7 +247,6 @@ export default function OwnerAgenciesPage() {
           </section>
         </div>
       </div>
-    </DashboardLayout>
   );
 }
 
