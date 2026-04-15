@@ -58,6 +58,12 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
+    if ((user as any).deleted_at) {
+      return badRequest("هذا الحساب غير متاح");
+    }
+    if ((user as any).is_active === false) {
+      return badRequest("تم تعطيل هذا الحساب");
+    }
 
     const valid = await bcrypt.compare(password, (user as any).password_hash);
     if (!valid) {

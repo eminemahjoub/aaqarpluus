@@ -39,10 +39,13 @@ export function LoginForm() {
         return;
       }
 
+      const ut = String(data?.user?.userType ?? "");
       const nextPath =
-        String(data?.user?.userType ?? "") === "agency"
-          ? "/agency"
-          : "/dashboard";
+        ut === "superadmin"
+          ? "/admin"
+          : ut === "agency"
+            ? "/agency"
+            : "/dashboard";
       // Force full navigation so auth cookie is applied.
       window.location.assign(nextPath);
     } catch {

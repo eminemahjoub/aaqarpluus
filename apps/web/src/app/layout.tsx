@@ -5,6 +5,8 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Navbar } from "@/components/landing/Navbar";
 import { getUserFromCookies } from "@/lib/api-helpers";
+import { cookies } from "next/headers";
+import { REFRESH_COOKIE } from "@/lib/auth";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -31,13 +33,16 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getUserFromCookies();
+  const cookieStore = await cookies();
+  const hasRefresh = Boolean(cookieStore.get(REFRESH_COOKIE)?.value);
+  const isAuthed = Boolean(user) || hasRefresh;
   return (
     <html lang="ar" dir="rtl" className={tajawal.variable} suppressHydrationWarning>
       <body className="min-h-screen antialiased">
         <ThemeProvider>
           <QueryProvider>
-            {!user ? <Navbar /> : null}
-            <div className={!user ? "pt-16 sm:pt-[4.25rem]" : ""}>{children}</div>
+            {!isAuthed ? <Navbar /> : null}
+            <div className={!isAuthed ? "pt-16 sm:pt-[4.25rem]" : ""}>{children}</div>
           </QueryProvider>
         </ThemeProvider>
       </body>

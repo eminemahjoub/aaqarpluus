@@ -13,10 +13,13 @@ export const UserSchema = schema({
     password_hash: { type: "varchar", length: 255 },
     full_name: { type: "varchar", length: 255, nullable: true },
     phone: { type: "varchar", length: 50, nullable: true },
+    // owner | agency | superadmin
     user_type: { type: "varchar", length: 50, default: "owner" },
+    is_active: { type: "boolean", default: true },
     token_version: { type: "int", default: 0 },
     // For agency (office) members only. Owners/personal typically have null.
     office_id: { type: "uuid", nullable: true },
+    deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },
     updated_at: { type: "timestamp", updateDate: true },
   },
@@ -28,7 +31,66 @@ export const OfficeSchema = schema({
   columns: {
     id: { type: "uuid", primary: true, generated: "uuid" },
     name: { type: "varchar", length: 255 },
+    phone: { type: "varchar", length: 50, nullable: true },
+    email: { type: "varchar", length: 255, nullable: true },
+    address: { type: "text", nullable: true },
+    license: { type: "varchar", length: 100, nullable: true },
+    is_active: { type: "boolean", default: true },
+    deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+});
+
+export const SubscriptionSchema = schema({
+  name: "Subscription",
+  tableName: "subscriptions",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    user_id: { type: "uuid" },
+    plan: { type: "varchar", length: 30, default: "free" }, // free|basic|premium|enterprise
+    status: { type: "varchar", length: 30, default: "active" }, // active|expired|cancelled|trial
+    start_date: { type: "date" },
+    end_date: { type: "date", nullable: true },
+    max_properties: { type: "int", default: 5 },
+    max_units: { type: "int", default: 20 },
+    max_users: { type: "int", default: 1 },
+    price: { type: "numeric", precision: 10, scale: 2, default: 0 },
+    created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+  relations: {
+    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
+  },
+});
+
+export const AuditLogSchema = schema({
+  name: "AuditLog",
+  tableName: "audit_logs",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    user_id: { type: "uuid", nullable: true },
+    action: { type: "varchar", length: 50 },
+    entity_type: { type: "varchar", length: 100, nullable: true },
+    entity_id: { type: "varchar", length: 100, nullable: true },
+    changes: { type: "jsonb", nullable: true },
+    metadata: { type: "jsonb", nullable: true },
+    ip_address: { type: "varchar", length: 80, nullable: true },
+    user_agent: { type: "varchar", length: 500, nullable: true },
+    created_at: { type: "timestamp", createDate: true },
+  },
+  relations: {
+    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" }, nullable: true },
+  },
+});
+
+export const PlatformSettingSchema = schema({
+  name: "PlatformSetting",
+  tableName: "platform_settings",
+  columns: {
+    key: { type: "varchar", length: 100, primary: true },
+    value: { type: "jsonb" },
+    updated_by: { type: "varchar", length: 100, nullable: true },
     updated_at: { type: "timestamp", updateDate: true },
   },
 });

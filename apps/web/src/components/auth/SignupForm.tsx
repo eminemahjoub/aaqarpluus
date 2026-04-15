@@ -80,10 +80,13 @@ export function SignupForm() {
         return;
       }
 
+      const ut = String(data?.user?.userType ?? userType);
       const nextPath =
-        String(data?.user?.userType ?? userType) === "agency"
-          ? "/agency"
-          : "/dashboard";
+        ut === "superadmin"
+          ? "/admin"
+          : ut === "agency"
+            ? "/agency"
+            : "/dashboard";
       // Force full navigation so auth cookie is applied.
       window.location.assign(nextPath);
     } catch {

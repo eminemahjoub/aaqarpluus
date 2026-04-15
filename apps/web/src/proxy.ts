@@ -5,7 +5,7 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
   // Protect private areas + route agencies away from /dashboard.
-  if (path.startsWith("/dashboard") || path.startsWith("/agency")) {
+  if (path.startsWith("/dashboard") || path.startsWith("/agency") || path.startsWith("/admin")) {
     const token = request.cookies.get(TOKEN_COOKIE)?.value;
     const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
     if (!token) {
@@ -23,6 +23,14 @@ export async function proxy(request: NextRequest) {
     }
 
     const userType = String((user as any).userType ?? "");
+
+    // Admin area: only superadmin.
+    if (path.startsWith("/admin")) {
+      if (userType === "superadmin") return NextResponse.next({ request });
+      // logged-in but not superadmin → redirect to their home area
+      const url = new URL(userType === "agency" ? "/agency" : "/dashboard", request.url);
+      return NextResponse.redirect(url);
+    }
 
     // Agency users should never use /dashboard (redirect to /agency equivalents).
     if (userType === "agency" && path.startsWith("/dashboard")) {
