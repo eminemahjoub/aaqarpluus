@@ -8,7 +8,11 @@ export function NavbarGate() {
   const hide =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/agency") ||
-    pathname.startsWith("/admin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/onboarding") ||
+    pathname === "/v" ||
+    pathname.startsWith("/v/");
+
   if (hide) return null;
   return <Navbar />;
 }
