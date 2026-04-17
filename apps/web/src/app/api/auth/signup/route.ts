@@ -43,6 +43,16 @@ export async function POST(req: NextRequest) {
       return badRequest("هذا البريد الإلكتروني مسجل مسبقاً");
     }
 
+    const existingPhone = await repo
+      .createQueryBuilder("u")
+      .where("u.phone = :phone", { phone })
+      .andWhere("u.deleted_at IS NULL")
+      .getOne();
+
+    if (existingPhone) {
+      return badRequest("رقم الجوال مستخدم مسبقاً");
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
 
     // If signing up as an agency (office), create an office and attach office_id.
