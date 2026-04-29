@@ -6,10 +6,10 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 COPY . .
 
-EXPOSE 3000
+EXPOSE 2000
 
-CMD ["pnpm", "dev", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["pnpm", "dev", "-H", "0.0.0.0", "-p", "2000"]

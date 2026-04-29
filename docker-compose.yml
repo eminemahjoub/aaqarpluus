@@ -5,10 +5,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: property_crm
-    # No host port published by default (avoids "address already in use").
+    # Database port mapped to 2032 on host
     # The `web` service connects via DB_HOST=db on the compose network.
-    expose:
-      - "5432"
+    ports:
+      - "2032:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,8 +24,8 @@ services:
     env_file:
       - ./apps/web/.env.docker
     ports:
-      # If port 3000 is already used on your host, change the left side
-      - "3001:3000"
+      # Web service mapped to port 2001 on host
+      - "2001:2000"
     depends_on:
       db:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
       - web_next_cache:/app/.next
-    command: ["pnpm", "dev", "-H", "0.0.0.0", "-p", "3000"]
+    command: ["pnpm", "dev", "-H", "0.0.0.0", "-p", "2000"]
 
 volumes:
   pg_data:
