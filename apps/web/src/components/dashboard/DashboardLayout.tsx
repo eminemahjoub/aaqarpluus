@@ -7,6 +7,8 @@ import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { authFetch } from "@/lib/auth-fetch";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { OWNER_PROPERTIES_READ_ONLY_MESSAGE } from "@/lib/permissions";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -14,11 +16,15 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, role = "personal" }: DashboardLayoutProps) {
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const { totalUnread } = useUnreadCount();
+  const showPropertiesReadOnlyBanner =
+    resolvedRole === "owner" &&
+    (pathname.startsWith("/dashboard/properties") || pathname.startsWith("/agency/properties"));
 
   React.useEffect(() => {
     let cancelled = false;
@@ -144,7 +150,14 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          {showPropertiesReadOnlyBanner ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-100">
+              {OWNER_PROPERTIES_READ_ONLY_MESSAGE}
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

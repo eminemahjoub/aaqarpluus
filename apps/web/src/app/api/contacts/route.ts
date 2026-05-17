@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, ok, created, badRequest } from "@/lib/api-helpers";
+import { getUserFromRequest, ok, created, badRequest, unauthorized } from "@/lib/api-helpers";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
-import { handleError, unauthorized } from "@/lib/errors";
+import { handleError, unauthorized as throwUnauthorized } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) throw unauthorized();
+    if (!user) throw throwUnauthorized();
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
@@ -93,16 +93,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) throw unauthorized();
+    if (!user) return unauthorized();
 
     const body = await req.json();
     if (!body.name?.trim()) return badRequest("الاسم مطلوب");
 
-    if (String(user.userType ?? "") === "agency") throw unauthorized();
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Contact");
-    const ownerId = String(user.userId);
+    let ownerId = String(user.userId);
+    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    if (Array.isArray(propertyIds)) {
+      const ownerIdRaw = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
+      if (!ownerIdRaw) return badRequest("معرّف المالك مطلوب");
+      const officeId = user.officeId ? String(user.officeId) : null;
+      if (!officeId) return badRequest("office_id غير موجود");
+      const linked = await ds.query(
+        "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
+        [officeId, ownerIdRaw]
+      );
+      if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      ownerId = ownerIdRaw;
+    }
 
     const contact = repo.create({
       owner_id: ownerId,

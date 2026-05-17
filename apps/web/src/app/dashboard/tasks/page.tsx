@@ -6,6 +6,7 @@ import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { occursOnCalendarDay } from "@/lib/recurring-tasks";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { useCanMutate } from "@/hooks/useCanMutate";
 import {
   Plus,
   Calendar,
@@ -748,6 +749,7 @@ function DeleteModal({
 // Main Tasks Page
 export default function TasksPage() {
   const router = useRouter();
+  const { canMutate } = useCanMutate();
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [properties, setProperties] = useState<Array<{ id: string; name: string }>>([]);
@@ -1018,13 +1020,17 @@ export default function TasksPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 rounded-xl bg-[#2D4F6E] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1e3a52] dark:bg-[#2D4F6E] dark:hover:bg-[#1e3a52]"
-          >
-            <Plus className="h-4 w-4" />
-            إضافة مهمة
-          </button>
+          {canMutate ? (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 rounded-xl bg-[#2D4F6E] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1e3a52] dark:bg-[#2D4F6E] dark:hover:bg-[#1e3a52]"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة مهمة
+            </button>
+          ) : (
+            <div />
+          )}
           <div className="flex items-center gap-4">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               المهام

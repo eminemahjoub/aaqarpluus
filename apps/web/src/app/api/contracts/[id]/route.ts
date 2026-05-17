@@ -55,7 +55,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const updates: Record<string, any> = {};
-    const fields = ["status", "end_date", "extra", "rent_total_sar", "rent_amount_sar", "notes", "payment_frequency"];
+    const fields = [
+      "status",
+      "start_date",
+      "end_date",
+      "unit_id",
+      "contact_id",
+      "extra",
+      "rent_total_sar",
+      "rent_amount_sar",
+      "notes",
+      "payment_frequency",
+    ];
     for (const f of fields) {
       if (body[f] !== undefined) updates[f] = body[f];
     }

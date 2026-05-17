@@ -5,16 +5,37 @@ import Link from "next/link";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { useCanMutate } from "@/hooks/useCanMutate";
 
 type DbProperty = {
   id: string;
   name: string;
+  owner_id: string;
   units_count: number;
   apartments_count: number;
   shops_count: number;
   other_units_count: number;
   unit_identifiers: string | null;
 };
+
+type TenantOption = { id: string; name: string; phone?: string | null };
+
+function localCalendarYmd(d: Date = new Date()) {
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function addMonthsYmd(startYmd: string, months: number) {
+  const d = new Date(`${startYmd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return startYmd;
+  const next = new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
+  const yy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, "0");
+  const dd = String(next.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
 
 type ComponentType =
   | "living_room"
@@ -43,6 +64,12 @@ type UnitDraft = {
   label: string;
   unitType: UnitType;
   priceSar?: number;
+  tenantContactId: string;
+  contractId: string | null;
+  contractStartDate: string;
+  contractEndDate: string;
+  newTenantName: string;
+  newTenantPhone: string;
   defaults: {
     livingRooms: number;
     bedrooms: number;
@@ -52,6 +79,29 @@ type UnitDraft = {
   };
   components: ComponentDraft[];
 };
+
+function tenantFieldsFromContract(ct: any | null | undefined): Pick<
+  UnitDraft,
+  "tenantContactId" | "contractId" | "contractStartDate" | "contractEndDate"
+> {
+  const today = localCalendarYmd();
+  if (!ct) {
+    return {
+      tenantContactId: "",
+      contractId: null,
+      contractStartDate: today,
+      contractEndDate: addMonthsYmd(today, 12),
+    };
+  }
+  const start = ct.start_date ? String(ct.start_date).slice(0, 10) : today;
+  const end = ct.end_date ? String(ct.end_date).slice(0, 10) : addMonthsYmd(start, 12);
+  return {
+    tenantContactId: ct.contact_id ? String(ct.contact_id) : "",
+    contractId: ct.id ? String(ct.id) : null,
+    contractStartDate: start,
+    contractEndDate: end,
+  };
+}
 
 function uuidv4Fallback(): string {
   // RFC4122 v4-ish UUID using crypto.getRandomValues when randomUUID isn't available.
@@ -195,8 +245,11 @@ const serializeComponents = (components: ComponentDraft[]) =>
   }));
 
 export default function UnitsBuilderPage() {
+  const { canMutate, canMutateProperties } = useCanMutate();
   const [propertyId, setPropertyId] = React.useState<string | null>(null);
   const [property, setProperty] = React.useState<DbProperty | null>(null);
+  const [propertyOwnerId, setPropertyOwnerId] = React.useState<string | null>(null);
+  const [tenantOptions, setTenantOptions] = React.useState<TenantOption[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [units, setUnits] = React.useState<UnitDraft[]>([]);
   const totalUnitsRent = React.useMemo(() => units.reduce((acc, u) => acc + (u.priceSar ?? 0), 0), [units]);
@@ -205,34 +258,90 @@ export default function UnitsBuilderPage() {
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
   const refreshTick = useRealtimeRefresh();
 
+  const syncUnitTenant = React.useCallback(
+    async (u: UnitDraft) => {
+      if (!propertyId || !canMutate) return;
+      const contactId = u.tenantContactId?.trim();
+      if (!contactId) return;
+      const rent = Number(u.priceSar) || 0;
+      if (rent <= 0) return;
+      const payload = {
+        property_id: propertyId,
+        unit_id: u.id,
+        contact_id: contactId,
+        start_date: u.contractStartDate,
+        end_date: u.contractEndDate,
+        rent_total_sar: rent,
+        status: "active",
+      };
+      if (u.contractId) {
+        await authFetch(`/api/contracts/${u.contractId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const res = await authFetch("/api/contracts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const inserted = await res.json();
+          if (inserted?.id) {
+            setUnits((prev) =>
+              prev.map((row) => (row.id === u.id ? { ...row, contractId: String(inserted.id) } : row)),
+            );
+          }
+        }
+      }
+    },
+    [propertyId, canMutate],
+  );
+
   const saveNow = React.useCallback(async () => {
     if (!propertyId) return;
     if (units.length === 0) return;
     setSaving(true);
     setSaveError(null);
     try {
+      const nextUnits = units.map((u) => ({ ...u }));
       // Save each unit: PUT if it came from DB (UUID format), POST if local-only
-      for (let idx = 0; idx < units.length; idx++) {
-        const u = units[idx];
-        const body = {
-          property_id: propertyId,
-          label: u.label,
-          unit_type: u.unitType,
-          rent_amount: Number(u.priceSar) || 0,
-        };
-        // Try PUT first (update existing), fall back to POST for new units
-        const res = await authFetch(`/api/units/${u.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          // Might be a client-side generated ID; try to create
-          await authFetch("/api/units", {
-            method: "POST",
+      if (canMutateProperties) {
+        for (let idx = 0; idx < nextUnits.length; idx++) {
+          let u = nextUnits[idx];
+          const body = {
+            property_id: propertyId,
+            label: u.label,
+            unit_type: u.unitType,
+            rent_amount: Number(u.priceSar) || 0,
+            status: u.tenantContactId?.trim() ? "occupied" : "vacant",
+          };
+          const res = await authFetch(`/api/units/${u.id}`, {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
+          if (!res.ok) {
+            const created = await authFetch("/api/units", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (created.ok) {
+              const row = await created.json();
+              if (row?.id) {
+                u = { ...u, id: String(row.id) };
+                nextUnits[idx] = u;
+              }
+            }
+          }
+        }
+        setUnits(nextUnits);
+      }
+      if (canMutate) {
+        for (const u of nextUnits) {
+          await syncUnitTenant(u);
         }
       }
       setLastSavedAt(new Date().toISOString());
@@ -241,7 +350,7 @@ export default function UnitsBuilderPage() {
     } finally {
       setSaving(false);
     }
-  }, [propertyId, units]);
+  }, [propertyId, units, canMutate, canMutateProperties, syncUnitTenant]);
 
   const uploadComponentImages = React.useCallback(
     async ({ unitId, componentId, files }: { unitId: string; componentId: string; files: FileList }) => {
@@ -295,27 +404,55 @@ export default function UnitsBuilderPage() {
 
     async function load() {
       setLoading(true);
-      const [propRes, unitsRes] = await Promise.all([
+      const [propRes, unitsRes, contactsRes, contractsRes] = await Promise.all([
         authFetch(`/api/properties/${propertyId}`),
         authFetch(`/api/units?property_id=${propertyId}`),
+        authFetch("/api/contacts"),
+        authFetch(`/api/contracts?property_id=${propertyId}`),
       ]);
       if (cancelled) return;
-      const [propData, dbUnits] = await Promise.all([
+      const [propData, dbUnits, contactsRaw, contractsRaw] = await Promise.all([
         propRes.ok ? propRes.json() : null,
         unitsRes.ok ? unitsRes.json() : [],
+        contactsRes.ok ? contactsRes.json() : [],
+        contractsRes.ok ? contractsRes.json() : [],
       ]);
       if (cancelled) return;
 
-      const prop = propData ? {
-        id: String(propData.id),
-        name: String(propData.name),
-        units_count: Number(propData.units_count) || 0,
-        apartments_count: Number(propData.apartments_count) || 0,
-        shops_count: Number(propData.shops_count) || 0,
-        other_units_count: Number(propData.other_units_count) || 0,
-        unit_identifiers: propData.unit_identifiers ?? null,
-      } as DbProperty : null;
+      const contactsList = Array.isArray(contactsRaw) ? contactsRaw : [];
+      setTenantOptions(
+        contactsList.map((c: any) => ({
+          id: String(c.id),
+          name: String(c.name ?? "—"),
+          phone: c.phone ? String(c.phone) : null,
+        })),
+      );
+
+      const contractByUnit: Record<string, any> = {};
+      for (const c of Array.isArray(contractsRaw) ? contractsRaw : []) {
+        const uid = c?.unit_id ? String(c.unit_id) : "";
+        if (!uid) continue;
+        const prev = contractByUnit[uid];
+        const status = String(c.status ?? "");
+        if (!prev || (status === "active" && String(prev.status ?? "") !== "active")) {
+          contractByUnit[uid] = c;
+        }
+      }
+
+      const prop = propData
+        ? ({
+            id: String(propData.id),
+            name: String(propData.name),
+            owner_id: String(propData.owner_id ?? ""),
+            units_count: Number(propData.units_count) || 0,
+            apartments_count: Number(propData.apartments_count) || 0,
+            shops_count: Number(propData.shops_count) || 0,
+            other_units_count: Number(propData.other_units_count) || 0,
+            unit_identifiers: propData.unit_identifiers ?? null,
+          } as DbProperty)
+        : null;
       setProperty(prop);
+      setPropertyOwnerId(prop?.owner_id ? String(prop.owner_id) : null);
 
       // Auto-generate units if none exist yet
       if ((!dbUnits || dbUnits.length === 0) && prop && prop.units_count > 0) {
@@ -348,11 +485,15 @@ export default function UnitsBuilderPage() {
                 u.unit_type === "shop" || u.unit_type === "other" || u.unit_type === "apartment"
                   ? (u.unit_type as UnitType)
                   : inferUnitTypeByIndex(prop, idx);
+              const tenant = tenantFieldsFromContract(contractByUnit[String(u.id)]);
               return {
-              id: String(u.id),
-              label: String(u.label ?? "وحدة"),
+                id: String(u.id),
+                label: String(u.label ?? "وحدة"),
                 unitType,
                 priceSar: u.rent_amount != null ? Number(u.rent_amount) : 0,
+                ...tenant,
+                newTenantName: "",
+                newTenantPhone: "",
                 defaults: defaultsForUnitType(unitType),
                 components: [] as ComponentDraft[],
               };
@@ -391,11 +532,15 @@ export default function UnitsBuilderPage() {
           ...c,
           images: byComponent[c.id] ?? [{ id: makeId() }],
         }));
+        const tenant = tenantFieldsFromContract(contractByUnit[String(u.id)]);
         return {
           id: String(u.id),
           label: String(u.label ?? "وحدة"),
           unitType,
           priceSar: u.rent_amount != null ? Number(u.rent_amount) : 0,
+          ...tenant,
+          newTenantName: "",
+          newTenantPhone: "",
           defaults: defaultsForUnitType(unitType),
           components,
         };
@@ -438,6 +583,54 @@ export default function UnitsBuilderPage() {
   const updateUnitPrice = React.useCallback((unitId: string, priceSar: number) => {
     setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, priceSar } : u)));
   }, []);
+
+  const updateUnitTenant = React.useCallback(
+    (
+      unitId: string,
+      patch: Partial<
+        Pick<UnitDraft, "tenantContactId" | "contractStartDate" | "contractEndDate" | "newTenantName" | "newTenantPhone">
+      >,
+    ) => {
+      setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
+    },
+    [],
+  );
+
+  const createTenantForUnit = React.useCallback(
+    async (unitId: string) => {
+      const u = units.find((x) => x.id === unitId);
+      if (!u?.newTenantName.trim() || !propertyOwnerId) return;
+      const res = await authFetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: u.newTenantName.trim(),
+          phone: u.newTenantPhone.trim() || null,
+          type: "tenant",
+          owner_id: propertyOwnerId,
+        }),
+      });
+      if (!res.ok) return;
+      const c = await res.json();
+      const opt: TenantOption = {
+        id: String(c.id),
+        name: String(c.name ?? u.newTenantName),
+        phone: c.phone ? String(c.phone) : null,
+      };
+      setTenantOptions((prev) => (prev.some((t) => t.id === opt.id) ? prev : [...prev, opt]));
+      setUnits((prev) =>
+        prev.map((row) =>
+          row.id === unitId ? { ...row, tenantContactId: opt.id, newTenantName: "", newTenantPhone: "" } : row,
+        ),
+      );
+    },
+    [units, propertyOwnerId],
+  );
+
+  const tenantSelectOptions = React.useMemo(() => {
+    const tenants = tenantOptions.filter((t) => true);
+    return tenants.length > 0 ? tenants : tenantOptions;
+  }, [tenantOptions]);
 
   const regenerateUnit = React.useCallback((unitId: string) => {
     setUnits((prev) =>
@@ -594,12 +787,18 @@ export default function UnitsBuilderPage() {
                     : `صالونات: ${unit.defaults.livingRooms} · غرف نوم: ${unit.defaults.bedrooms} · حمامات: ${unit.defaults.bathrooms}`}
                   {unit.unitType !== "shop" && unit.defaults.hasBalcony ? " · بلكونة" : ""}{" "}
                   {unit.unitType !== "shop" && unit.defaults.hasKitchen ? " · مطبخ" : ""}
+                  {unit.tenantContactId
+                    ? ` · مستأجر: ${tenantSelectOptions.find((t) => t.id === unit.tenantContactId)?.name ?? "—"}`
+                    : " · شاغرة"}
                 </p>
               </div>
               <ChevronDown className="h-4 w-4 text-gray-500 transition group-open:rotate-180 dark:text-gray-400" />
             </summary>
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-5">
+            <fieldset
+              disabled={!canMutateProperties}
+              className="mt-4 grid gap-4 border-0 p-0 sm:grid-cols-5 disabled:opacity-70"
+            >
               <div className="sm:col-span-2">
                 <label className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">سعر/إيجار الوحدة (ر.س)</label>
                 <input
@@ -673,19 +872,105 @@ export default function UnitsBuilderPage() {
                   </div>
                 </>
               ) : null}
+            </fieldset>
+
+            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 dark:border-indigo-900/30 dark:bg-indigo-950/20">
+              <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المستأجر</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">اختر المستأجر</label>
+                  <select
+                    value={unit.tenantContactId}
+                    onChange={(e) => updateUnitTenant(unit.id, { tenantContactId: e.target.value })}
+                    disabled={!canMutate}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                  >
+                    <option value="">— بدون مستأجر —</option>
+                    {tenantSelectOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {t.phone ? ` (${t.phone})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {canMutate ? (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">اسم مستأجر جديد</label>
+                      <input
+                        type="text"
+                        value={unit.newTenantName}
+                        onChange={(e) => updateUnitTenant(unit.id, { newTenantName: e.target.value })}
+                        placeholder="مثال: أحمد محمد"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">جوال المستأجر</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          value={unit.newTenantPhone}
+                          onChange={(e) => updateUnitTenant(unit.id, { newTenantPhone: e.target.value })}
+                          placeholder="05xxxxxxxx"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void createTenantForUnit(unit.id)}
+                          disabled={!unit.newTenantName.trim()}
+                          className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          إضافة
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+                {unit.tenantContactId ? (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">بداية العقد</label>
+                      <input
+                        type="date"
+                        value={unit.contractStartDate}
+                        onChange={(e) => updateUnitTenant(unit.id, { contractStartDate: e.target.value })}
+                        disabled={!canMutate}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">نهاية العقد</label>
+                      <input
+                        type="date"
+                        value={unit.contractEndDate}
+                        onChange={(e) => updateUnitTenant(unit.id, { contractEndDate: e.target.value })}
+                        disabled={!canMutate}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </div>
+              {unit.tenantContactId && Number(unit.priceSar || 0) <= 0 ? (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">أدخل سعر/إيجار الوحدة لربط العقد بالمستأجر.</p>
+              ) : null}
             </div>
 
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => regenerateUnit(unit.id)}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#102318] dark:text-gray-200"
-              >
-                توليد المكوّنات
-              </button>
-            </div>
+            {canMutateProperties ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => regenerateUnit(unit.id)}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#102318] dark:text-gray-200"
+                >
+                  توليد المكوّنات
+                </button>
+              </div>
+            ) : null}
 
-            <div className="mt-4 space-y-3">
+            <fieldset disabled={!canMutateProperties} className="mt-4 space-y-3 border-0 p-0 disabled:opacity-70">
               {unit.components.map((c) => (
                 <div
                   key={c.id}
@@ -760,7 +1045,7 @@ export default function UnitsBuilderPage() {
                   </div>
                 </div>
               ))}
-            </div>
+            </fieldset>
           </details>
         ))}
       </div>

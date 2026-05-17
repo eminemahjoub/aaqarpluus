@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function GET(req: NextRequest) {
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const readOnly = denyIfOwnerCannotMutateProperties(user);
+    if (readOnly) return readOnly;
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

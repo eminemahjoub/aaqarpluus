@@ -14,8 +14,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const repo = ds.getRepository("Contact");
 
     const propertyIds = await getAccessiblePropertyIds(ds, user);
-    if (Array.isArray(propertyIds)) return unauthorized(); // agency cannot edit contacts directly
-    const contact = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    let contact: any = null;
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return unauthorized();
+      const rows = await ds.query(
+        `SELECT c.id FROM contacts c
+         JOIN contracts ct ON ct.contact_id = c.id
+         WHERE c.id = $1 AND ct.property_id = ANY($2) AND c.deleted_at IS NULL
+         LIMIT 1`,
+        [id, propertyIds]
+      );
+      if (!rows?.length) return unauthorized();
+      contact = await repo.findOne({ where: { id } as any });
+    } else {
+      contact = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    }
     if (!contact) return unauthorized();
 
     await repo.update(id, {
@@ -43,8 +56,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const repo = ds.getRepository("Contact");
 
     const propertyIds = await getAccessiblePropertyIds(ds, user);
-    if (Array.isArray(propertyIds)) return unauthorized(); // agency cannot delete contacts directly
-    const contact = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    let contact: any = null;
+    if (Array.isArray(propertyIds)) {
+      if (propertyIds.length === 0) return unauthorized();
+      const rows = await ds.query(
+        `SELECT c.id FROM contacts c
+         JOIN contracts ct ON ct.contact_id = c.id
+         WHERE c.id = $1 AND ct.property_id = ANY($2) AND c.deleted_at IS NULL
+         LIMIT 1`,
+        [id, propertyIds]
+      );
+      if (!rows?.length) return unauthorized();
+      contact = await repo.findOne({ where: { id } as any });
+    } else {
+      contact = await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    }
     if (!contact) return unauthorized();
 
     // Nullify contact references before deleting (avoid FK violations)

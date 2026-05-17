@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { useCanMutate } from "@/hooks/useCanMutate";
 import {
   Building2,
   Search,
@@ -47,6 +48,7 @@ import {
   Copy,
   Eye,
   Ban,
+  Sparkles,
   Search as SearchIcon,
   Image as ImageIcon,
 } from "lucide-react";
@@ -616,6 +618,8 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
   const [structureError, setStructureError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     ownerId: "",
     propertyNumber: "2",
@@ -625,6 +629,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
     neighborhood: "",
     address: "",
     title: "",
+    description: "",
     propertyModelType: "building",
     unitsCount: "1",
     apartmentsCount: "",
@@ -739,6 +744,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
         owner_id: userType === "agency" ? formData.ownerId.trim() : undefined,
         name: (formData.name || formData.title || "عقار").trim(),
         title: formData.title?.trim() || null,
+        description: formData.description?.trim() || null,
         status: "vacant",
         region: formData.region || null,
         city: formData.city || null,
@@ -796,6 +802,47 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
   }, [formData.apartmentsCount, formData.shopsCount]);
 
   // تم نقل إكمال تفاصيل الوحدات إلى صفحة مستقلة بعد حفظ تفاصيل العقار
+
+  async function generateNotes() {
+    setGenError(null);
+    setGenLoading(true);
+    try {
+      const rooms = Number(formData.apartmentsCount || 0) || Number(formData.unitsCount || 0) || totalUnitsFromCounts || 0;
+      const surface = formData.area ? Number(formData.area) : 0;
+      const type =
+        formData.propertyModelType === "building"
+          ? "apartment"
+          : formData.propertyModelType === "complex"
+            ? "commercial"
+            : "apartment";
+      const features = [
+        formData.neighborhood ? `حي: ${formData.neighborhood}` : null,
+        formData.includeFees ? "تشمل الرسوم" : null,
+      ].filter(Boolean);
+
+      const res = await fetch("/ai/generate-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          city: formData.city || "—",
+          rooms: Number.isFinite(rooms) ? rooms : 0,
+          surface: Number.isFinite(surface) ? surface : 0,
+          features,
+          language: "ar",
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(j?.error ?? "تعذر توليد الوصف"));
+      const desc = String(j?.description ?? "").trim();
+      if (!desc) throw new Error("تعذر توليد الوصف");
+      setFormData((p) => ({ ...p, description: desc }));
+    } catch (e: any) {
+      setGenError(e?.message ?? "تعذر توليد الوصف");
+    } finally {
+      setGenLoading(false);
+    }
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="إضافة عقار جديد" size="xl">
@@ -1022,13 +1069,35 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
           </>
         </div>
         <div>
-          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الوصف</label>
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">العنوان التفصيلي</label>
           <textarea
-            placeholder="شارع فرعي"
+            placeholder="شارع/معلومة إضافية عن العنوان…"
             value={formData.address}
             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             className="h-20 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
           />
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">وصف العقار</label>
+            <button
+              type="button"
+              onClick={() => void generateNotes()}
+              disabled={genLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-800/40 dark:bg-indigo-900/20 dark:text-indigo-200 dark:hover:bg-indigo-900/30"
+              title="توليد وصف تلقائي"
+            >
+              <Sparkles className="h-4 w-4" />
+              {genLoading ? "جاري التوليد…" : "توليد وصف"}
+            </button>
+          </div>
+          <textarea
+            placeholder="اكتب وصف العقار…"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            className="h-28 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+          />
+          {genError ? <div className="mt-2 text-xs text-red-600 dark:text-red-300">{genError}</div> : null}
         </div>
         {userType !== "agency" ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-emerald-800/40 dark:bg-[#0f1e14]">
@@ -2985,10 +3054,12 @@ function OfferPriceModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onCl
 }
 
 export function PropertiesContent() {
+  const { canMutate, canMutateProperties, userType: meUserType } = useCanMutate();
+  const userType: "owner" | "agency" | "personal" =
+    meUserType === "agency" ? "agency" : meUserType === "personal" ? "personal" : "owner";
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<DbProperty[]>([]);
-  const [userType, setUserType] = useState<"owner" | "agency" | "personal">("owner");
   const [currentContractByProperty, setCurrentContractByProperty] = useState<
     Record<string, { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string }>
   >({});
@@ -3039,17 +3110,6 @@ export function PropertiesContent() {
 
   useEffect(() => {
     setMounted(true);
-    void (async () => {
-      try {
-        const res = await authFetch("/api/auth/me");
-        if (!res.ok) return;
-        const me = await res.json();
-        const t = String(me?.userType ?? "");
-        setUserType(t === "agency" ? "agency" : t === "personal" ? "personal" : "owner");
-      } catch {
-        // ignore
-      }
-    })();
     void loadProperties();
   }, [loadProperties, refreshTick]);
 
@@ -3097,7 +3157,9 @@ export function PropertiesContent() {
         <PropertyDetail
           property={selectedProperty}
           onBack={() => setSelectedPropertyId(null)}
-          onDelete={() => handleDeleteProperty(selectedProperty.id)}
+          canMutate={canMutate}
+          canMutateProperties={canMutateProperties}
+          onDelete={canMutateProperties ? () => handleDeleteProperty(selectedProperty.id) : undefined}
         />
         <DeleteConfirmationModal
           isOpen={showDeleteConfirm}
@@ -3129,13 +3191,15 @@ export function PropertiesContent() {
             {mounted ? filteredProperties.length : 0}
           </span>
         </div>
-        <button
-          onClick={() => setShowAddChoice(true)}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-        >
-          <Plus className="h-4 w-4" />
-          إضافة عقار
-        </button>
+        {canMutateProperties ? (
+          <button
+            onClick={() => setShowAddChoice(true)}
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" />
+            إضافة عقار
+          </button>
+        ) : null}
       </div>
 
       {/* Filters */}
@@ -3342,9 +3406,20 @@ function PropertyCard({
   );
 }
 
-function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; onBack: () => void; onDelete?: () => void }) {
+function PropertyDetail({
+  property,
+  onBack,
+  onDelete,
+  canMutate,
+  canMutateProperties,
+}: {
+  property: DbProperty;
+  onBack: () => void;
+  onDelete?: () => void;
+  canMutate: boolean;
+  canMutateProperties: boolean;
+}) {
   const [activeTab, setActiveTab] = useState("info");
-  const [isAgencyUser, setIsAgencyUser] = useState<boolean>(false);
   const [commissionTotals, setCommissionTotals] = useState<{ totalCommissionSar: number; monthCommissionSar: number; yearCommissionSar: number } | null>(null);
   const [contractHistory, setContractHistory] = useState<
     Array<{ id: string; tenant: string; unitId: string | null; unitLabel: string; startDate: string; endDate: string; rent: number; status: string }>
@@ -3423,25 +3498,7 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (!res.ok) return;
-        const me = await res.json();
-        const agency = String(me?.userType ?? "") === "agency";
-        if (!cancelled) setIsAgencyUser(agency);
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!isAgencyUser) {
+    if (!canMutateProperties) {
       setCommissionTotals(null);
       return;
     }
@@ -3469,7 +3526,7 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
     return () => {
       cancelled = true;
     };
-  }, [isAgencyUser, property.id, refreshTick, localTick]);
+  }, [canMutateProperties, property.id, refreshTick, localTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3781,13 +3838,24 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowEditProperty(true)}
-            className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
-          >
-            <Edit className="h-4 w-4" />
-            تعديل
-          </button>
+          {canMutateProperties ? (
+            <>
+              <button
+                onClick={() => setShowEditProperty(true)}
+                className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+              >
+                <Edit className="h-4 w-4" />
+                تعديل
+              </button>
+              <button
+                onClick={onDelete}
+                className="flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800/50 dark:bg-[#1a3528] dark:text-red-400"
+              >
+                <Trash2 className="h-4 w-4" />
+                حذف
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => window.print()}
@@ -3795,13 +3863,6 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           >
             <Printer className="h-4 w-4" />
             طباعة
-          </button>
-          <button
-            onClick={onDelete}
-            className="flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 dark:border-red-800/50 dark:bg-[#1a3528] dark:text-red-400"
-          >
-            <Trash2 className="h-4 w-4" />
-            حذف
           </button>
         </div>
       </div>
@@ -3865,14 +3926,16 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                         )}
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => propertyImages[0] && void fetch(`/api/property-images/${propertyImages[0].id}`, { method: "DELETE" }).then(() => setPropertyImages((prev) => prev.filter((_, i) => i !== 0)))}
-                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-500/80 text-white hover:bg-red-600"
-                      title="حذف الصورة"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    {canMutateProperties ? (
+                      <button
+                        type="button"
+                        onClick={() => propertyImages[0] && void fetch(`/api/property-images/${propertyImages[0].id}`, { method: "DELETE" }).then(() => setPropertyImages((prev) => prev.filter((_, i) => i !== 0)))}
+                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-500/80 text-white hover:bg-red-600"
+                        title="حذف الصورة"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="flex h-48 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 dark:border-emerald-800/50 dark:bg-[#0f1e14]">
@@ -3881,6 +3944,8 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                   </div>
                 )}
                 {/* Upload button */}
+                {canMutateProperties ? (
+                <>
                 <input
                   ref={imageInputRef}
                   type="file"
@@ -3919,6 +3984,8 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                   <Upload className="h-4 w-4" />
                   {uploadingImage ? "جاري الرفع..." : "إضافة صور"}
                 </button>
+                </>
+                ) : null}
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500 dark:text-gray-400">المستأجر الحالي</span>
@@ -3995,7 +4062,7 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                 </div>
 
                 {/* Agency: Owner + Commission */}
-                {isAgencyUser ? (
+                {canMutateProperties ? (
                   <div className="rounded-xl bg-white p-4 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500 dark:text-gray-400">المالك والعمولة</span>
@@ -4037,7 +4104,7 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                 ) : null}
 
                 {/* Owner: Managing office */}
-                {!isAgencyUser && property.managing_office_name ? (
+                {!canMutate && property.managing_office_name ? (
                   <div className="rounded-xl bg-white p-4 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500 dark:text-gray-400">المكتب المكلّف بالعقار</span>
@@ -4166,22 +4233,24 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">العقد الحالي</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddContract(true)}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-                >
-                  تعديل العقد
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCancelContract(true)}
-                  className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                >
-                  إلغاء العقد
-                </button>
-              </div>
+              {canMutate ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContract(true)}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+                  >
+                    تعديل العقد
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelContract(true)}
+                    className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                  >
+                    إلغاء العقد
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
@@ -4209,13 +4278,15 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           <div className="rounded-xl bg-white shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-emerald-800/30">
               <h3 className="font-semibold text-gray-900 dark:text-white">المصروفات</h3>
-              <button
-                onClick={() => setShowAddExpense(true)}
-                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                <Plus className="h-4 w-4" />
-                إضافة
-              </button>
+              {canMutate ? (
+                <button
+                  onClick={() => setShowAddExpense(true)}
+                  className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  إضافة
+                </button>
+              ) : null}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -4257,13 +4328,15 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           <div className="rounded-xl bg-white shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-emerald-800/30">
               <h3 className="font-semibold text-gray-900 dark:text-white">الإيرادات</h3>
-              <button
-                onClick={() => setShowAddRevenue(true)}
-                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                <Plus className="h-4 w-4" />
-                إضافة
-              </button>
+              {canMutate ? (
+                <button
+                  onClick={() => setShowAddRevenue(true)}
+                  className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  إضافة
+                </button>
+              ) : null}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -4325,13 +4398,15 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
                 </p>
               )}
             </div>
-            <a
-              href={`/dashboard/properties/units?property_id=${property.id}`}
-              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-            >
-              <Edit className="h-4 w-4" />
-              تعديل الوحدات
-            </a>
+            {canMutateProperties ? (
+              <a
+                href={`/dashboard/properties/units?property_id=${property.id}`}
+                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+              >
+                <Edit className="h-4 w-4" />
+                تعديل الوحدات
+              </a>
+            ) : null}
           </div>
 
           {propertyUnits.length === 0 ? (
@@ -5032,36 +5107,38 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           </div>
 
           {/* Quick Actions */}
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setShowAddContract(true)}
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة عقد
-            </button>
-            <button
-              onClick={() => setShowAddInstallment(true)}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة دفعة
-            </button>
-            <button
-              onClick={() => setShowAddInsurance(true)}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة فاتورة
-            </button>
-            <button
-              onClick={() => setShowOfferPrice(true)}
-              className="flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-800/50 dark:bg-indigo-900/20 dark:text-indigo-400"
-            >
-              <Calculator className="h-4 w-4" />
-              عرض سعر
-            </button>
-          </div>
+          {canMutate ? (
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => setShowAddContract(true)}
+                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة عقد
+              </button>
+              <button
+                onClick={() => setShowAddInstallment(true)}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة دفعة
+              </button>
+              <button
+                onClick={() => setShowAddInsurance(true)}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة فاتورة
+              </button>
+              <button
+                onClick={() => setShowOfferPrice(true)}
+                className="flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-800/50 dark:bg-indigo-900/20 dark:text-indigo-400"
+              >
+                <Calculator className="h-4 w-4" />
+                عرض سعر
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -5071,17 +5148,19 @@ function PropertyDetail({ property, onBack, onDelete }: { property: DbProperty; 
           <div className="rounded-xl bg-white shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-emerald-800/30">
               <h3 className="font-semibold text-gray-900 dark:text-white">مستندات العقار</h3>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700">
-                <Plus className="h-4 w-4" />
-                رفع ملف
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic"
-                  className="hidden"
-                  onChange={(e) => void handleDocUpload(e.target.files)}
-                />
-              </label>
+              {canMutate ? (
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700">
+                  <Plus className="h-4 w-4" />
+                  رفع ملف
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic"
+                    className="hidden"
+                    onChange={(e) => void handleDocUpload(e.target.files)}
+                  />
+                </label>
+              ) : null}
             </div>
 
             {docsLoading ? (

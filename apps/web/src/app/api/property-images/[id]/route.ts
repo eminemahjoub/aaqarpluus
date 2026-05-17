@@ -2,12 +2,15 @@ import { NextRequest } from "next/server";
 import { unlink } from "fs/promises";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const readOnly = denyIfOwnerCannotMutateProperties(user);
+    if (readOnly) return readOnly;
 
     const { id } = await params;
     const ds = await getDataSource();

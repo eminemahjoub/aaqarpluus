@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
+import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { z } from "zod";
 import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
@@ -199,6 +200,8 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const readOnly = denyIfOwnerCannotMutateProperties(user);
+    if (readOnly) return readOnly;
 
     const body = await req.json();
     const parsed = CreatePropertySchema.safeParse(body);
