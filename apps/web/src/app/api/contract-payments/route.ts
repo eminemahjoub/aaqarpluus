@@ -4,6 +4,7 @@ import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest 
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { z } from "zod";
 import { UuidSchema, badZod } from "@/lib/validation";
+import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
 
 const PaymentItemSchema = z.object({
   contract_id: UuidSchema,
@@ -55,6 +56,19 @@ export async function GET(req: NextRequest) {
     if (dateTo) qb = qb.andWhere("cp.due_date <= :dateTo", { dateTo });
 
     const payments = await qb.getMany();
+
+    if (ownerHidesTenantPii(user)) {
+      if (!contractId) return ok({ summaries: [] });
+      const contract = await ds.getRepository("Contract").findOne({ where: { id: contractId } as any });
+      if (!contract) return unauthorized();
+      const summary = buildOwnerContractSummary({
+        end_date: (contract as any).end_date,
+        start_date: (contract as any).start_date,
+        payments,
+      });
+      return ok({ summary });
+    }
+
     return ok(payments);
   } catch (err) {
     return serverError(err);
@@ -65,6 +79,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    if (ownerHidesTenantPii(user)) return unauthorized();
 
     const raw = await req.json();
     const parsed = CreatePaymentsSchema.safeParse(raw);

@@ -245,7 +245,7 @@ const serializeComponents = (components: ComponentDraft[]) =>
   }));
 
 export default function UnitsBuilderPage() {
-  const { canMutate, canMutateProperties } = useCanMutate();
+  const { canMutate, canMutateProperties, canManageContracts, ownerHidesTenantPii } = useCanMutate();
   const [propertyId, setPropertyId] = React.useState<string | null>(null);
   const [property, setProperty] = React.useState<DbProperty | null>(null);
   const [propertyOwnerId, setPropertyOwnerId] = React.useState<string | null>(null);
@@ -260,7 +260,7 @@ export default function UnitsBuilderPage() {
 
   const syncUnitTenant = React.useCallback(
     async (u: UnitDraft) => {
-      if (!propertyId || !canMutate) return;
+      if (!propertyId || !canManageContracts) return;
       const contactId = u.tenantContactId?.trim();
       if (!contactId) return;
       const rent = Number(u.priceSar) || 0;
@@ -296,7 +296,7 @@ export default function UnitsBuilderPage() {
         }
       }
     },
-    [propertyId, canMutate],
+    [propertyId, canManageContracts],
   );
 
   const saveNow = React.useCallback(async () => {
@@ -339,7 +339,7 @@ export default function UnitsBuilderPage() {
         }
         setUnits(nextUnits);
       }
-      if (canMutate) {
+      if (canManageContracts) {
         for (const u of nextUnits) {
           await syncUnitTenant(u);
         }
@@ -350,7 +350,7 @@ export default function UnitsBuilderPage() {
     } finally {
       setSaving(false);
     }
-  }, [propertyId, units, canMutate, canMutateProperties, syncUnitTenant]);
+  }, [propertyId, units, canManageContracts, canMutateProperties, syncUnitTenant]);
 
   const uploadComponentImages = React.useCallback(
     async ({ unitId, componentId, files }: { unitId: string; componentId: string; files: FileList }) => {
@@ -787,7 +787,7 @@ export default function UnitsBuilderPage() {
                     : `صالونات: ${unit.defaults.livingRooms} · غرف نوم: ${unit.defaults.bedrooms} · حمامات: ${unit.defaults.bathrooms}`}
                   {unit.unitType !== "shop" && unit.defaults.hasBalcony ? " · بلكونة" : ""}{" "}
                   {unit.unitType !== "shop" && unit.defaults.hasKitchen ? " · مطبخ" : ""}
-                  {unit.tenantContactId
+                  {!ownerHidesTenantPii && unit.tenantContactId
                     ? ` · مستأجر: ${tenantSelectOptions.find((t) => t.id === unit.tenantContactId)?.name ?? "—"}`
                     : " · شاغرة"}
                 </p>
@@ -874,6 +874,7 @@ export default function UnitsBuilderPage() {
               ) : null}
             </fieldset>
 
+            {canManageContracts ? (
             <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 dark:border-indigo-900/30 dark:bg-indigo-950/20">
               <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المستأجر</p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -957,6 +958,11 @@ export default function UnitsBuilderPage() {
                 <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">أدخل سعر/إيجار الوحدة لربط العقد بالمستأجر.</p>
               ) : null}
             </div>
+            ) : ownerHidesTenantPii ? (
+              <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                ربط المستأجر والعقد يتم عبر المكتب العقاري فقط.
+              </p>
+            ) : null}
 
             {canMutateProperties ? (
               <div className="mt-3">

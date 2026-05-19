@@ -22,4 +22,6 @@ export function canMutateAppData(user: Pick<JwtPayload, "userType"> | null | und
 }
 
 export const OWNER_PROPERTIES_READ_ONLY_MESSAGE =
-  "العقارات للعرض فقط — لا يمكنك إضافة أو تعديل العقارات. تواصل مع المكتب. يمكنك إدارة العقود والمهام وباقي البيانات.";
+  "العقارات للعرض فقط — لا يمكنك إضافة أو تعديل العقارات. تواصل مع المكتب. يمكنك إدارة المهام والمصروفات وباقي البيانات.";
+
+export { ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";

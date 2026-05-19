@@ -23,6 +23,8 @@ import {
   Clock,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { useCanMutate } from "@/hooks/useCanMutate";
+import { formatDaysUntilAr } from "@/lib/owner-tenant-privacy";
 import { authFetch } from "@/lib/auth-fetch";
 // Report Types
 const reportCategories = [
@@ -220,6 +222,7 @@ export default function ReportsPage() {
 }
 
 function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => void }) {
+  const { ownerHidesTenantPii } = useCanMutate();
   const todayYmd = new Date().toISOString().split("T")[0];
   const [dateFrom, setDateFrom] = useState(todayYmd);
   const [dateTo, setDateTo] = useState(todayYmd);
@@ -314,7 +317,9 @@ function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => vo
           id: String(r.id),
           property: String(r.property_name ?? "—"),
           unit: String(r.unit_label ?? "—"),
-          tenant: String(r.contact_name ?? "—"),
+          tenant: ownerHidesTenantPii && r.owner_contract_summary
+            ? formatDaysUntilAr(r.owner_contract_summary.days_until_next_rent_due)
+            : String(r.contact_name ?? "—"),
           contractStart: r.contract_start ? String(r.contract_start) : "—",
           paymentType: "إيجار",
           paymentStatus: String(r.status ?? "—"),
@@ -329,8 +334,10 @@ function ReportDetail({ reportId, onBack }: { reportId: string; onBack: () => vo
           id: String(c.id),
           property: String(c.property_name ?? "—"),
           unit: String(c.unit_label ?? "—"),
-          tenant: String(c.contact_name ?? "—"),
-          phone: c.contact_phone ? String(c.contact_phone) : "—",
+          tenant: ownerHidesTenantPii && c.owner_contract_summary
+            ? formatDaysUntilAr(c.owner_contract_summary.days_until_contract_end)
+            : String(c.contact_name ?? "—"),
+          phone: ownerHidesTenantPii ? "—" : c.contact_phone ? String(c.contact_phone) : "—",
           contractStart: c.start_date ? String(c.start_date) : "—",
           contractRenewal: "—",
           contractEnd: c.end_date ? String(c.end_date) : "—",

@@ -9,6 +9,9 @@ import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
 import { useCanMutate } from "@/hooks/useCanMutate";
+import { OwnerContractSummaryCards } from "@/components/dashboard/OwnerContractSummaryCards";
+import type { OwnerContractSummary } from "@/lib/owner-tenant-privacy";
+import { formatDaysUntilAr } from "@/lib/owner-tenant-privacy";
 import {
   Building2,
   Search,
@@ -3053,16 +3056,19 @@ function OfferPriceModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onCl
   );
 }
 
+type PropertyContractPreview =
+  | { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string }
+  | ({ summary: OwnerContractSummary } & { unitLabel: string });
+
 export function PropertiesContent() {
-  const { canMutate, canMutateProperties, userType: meUserType } = useCanMutate();
+  const { canMutate, canMutateProperties, ownerHidesTenantPii, canManageContracts, userType: meUserType } =
+    useCanMutate();
   const userType: "owner" | "agency" | "personal" =
     meUserType === "agency" ? "agency" : meUserType === "personal" ? "personal" : "owner";
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<DbProperty[]>([]);
-  const [currentContractByProperty, setCurrentContractByProperty] = useState<
-    Record<string, { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string }>
-  >({});
+  const [currentContractByProperty, setCurrentContractByProperty] = useState<Record<string, PropertyContractPreview>>({});
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const selectedProperty = properties.find((p) => p.id === selectedPropertyId) ?? null;
   const [activeTab, setActiveTab] = useState("all");
@@ -3090,16 +3096,24 @@ export function PropertiesContent() {
       const data = await res.json();
       setProperties((data ?? []) as DbProperty[]);
 
-      const nextMap: Record<string, { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string }> = {};
+      const nextMap: Record<string, PropertyContractPreview> = {};
       for (const prop of data ?? []) {
         if (prop.active_contract) {
-          nextMap[String(prop.id)] = {
-            tenantName: String(prop.active_contract.contact_name ?? "—"),
-            tenantPhone: prop.active_contract.contact_phone ?? null,
-            unitLabel: String(prop.active_contract.unit_label ?? "—"),
-            startDate: String(prop.active_contract.start_date ?? "—"),
-            endDate: String(prop.active_contract.end_date ?? "—"),
-          };
+          const ac = prop.active_contract;
+          if (ac.days_until_contract_end !== undefined || ac.days_until_next_rent_due !== undefined) {
+            nextMap[String(prop.id)] = {
+              summary: ac as OwnerContractSummary,
+              unitLabel: String(ac.unit_label ?? "—"),
+            };
+          } else {
+            nextMap[String(prop.id)] = {
+              tenantName: String(ac.contact_name ?? "—"),
+              tenantPhone: ac.contact_phone ?? null,
+              unitLabel: String(ac.unit_label ?? "—"),
+              startDate: String(ac.start_date ?? "—"),
+              endDate: String(ac.end_date ?? "—"),
+            };
+          }
         }
       }
       setCurrentContractByProperty(nextMap);
@@ -3124,8 +3138,8 @@ export function PropertiesContent() {
       p.neighborhood ?? "",
       p.address ?? "",
       p.region ?? "",
-      contract?.tenantName ?? "",
-      contract?.tenantPhone ?? "",
+      "summary" in (contract ?? {}) ? "" : (contract as { tenantName?: string })?.tenantName ?? "",
+      "summary" in (contract ?? {}) ? "" : (contract as { tenantPhone?: string })?.tenantPhone ?? "",
       contract?.unitLabel ?? "",
       p.property_model_type ?? "",
     ].join(" ").toLowerCase();
@@ -3159,6 +3173,8 @@ export function PropertiesContent() {
           onBack={() => setSelectedPropertyId(null)}
           canMutate={canMutate}
           canMutateProperties={canMutateProperties}
+          canManageContracts={canManageContracts}
+          ownerHidesTenantPii={ownerHidesTenantPii}
           onDelete={canMutateProperties ? () => handleDeleteProperty(selectedProperty.id) : undefined}
         />
         <DeleteConfirmationModal
@@ -3274,6 +3290,7 @@ export function PropertiesContent() {
             onClick={() => setSelectedPropertyId(property.id)}
             viewMode={viewMode}
             currentContract={currentContractByProperty[property.id] ?? null}
+            ownerHidesTenantPii={ownerHidesTenantPii}
           />
         ))}
       </div>
@@ -3312,12 +3329,26 @@ function PropertyCard({
   onClick,
   viewMode,
   currentContract,
+  ownerHidesTenantPii,
 }: {
   property: DbProperty;
   onClick: () => void;
   viewMode: "grid" | "list";
-  currentContract?: { tenantName: string; tenantPhone: string | null; unitLabel: string; startDate: string; endDate: string } | null;
+  currentContract?: PropertyContractPreview | null;
+  ownerHidesTenantPii: boolean;
 }) {
+  const contractLabel = React.useMemo(() => {
+    if (!currentContract) return "—";
+    if ("summary" in currentContract) {
+      const s = currentContract.summary;
+      const end = formatDaysUntilAr(s.days_until_contract_end);
+      const rent = formatDaysUntilAr(s.days_until_next_rent_due);
+      return `${end} · ${rent}`;
+    }
+    return currentContract.tenantName && currentContract.tenantName !== "—"
+      ? currentContract.tenantName
+      : "—";
+  }, [currentContract]);
   const location = [property.city, property.neighborhood, property.address].filter(Boolean).join("، ") || "—";
 
   if (viewMode === "list") {
@@ -3352,7 +3383,11 @@ function PropertyCard({
               {property.units_count} وحدات
             </span>
             <span className="text-gray-600 dark:text-gray-400">
-              {currentContract?.tenantName && currentContract.tenantName !== "—" ? `العقد الحالي: ${currentContract.tenantName}` : "العقد الحالي: —"}
+              {ownerHidesTenantPii
+                ? `العقد: ${contractLabel}`
+                : currentContract && "tenantName" in currentContract && currentContract.tenantName !== "—"
+                  ? `العقد الحالي: ${currentContract.tenantName}`
+                  : "العقد الحالي: —"}
             </span>
           </div>
         </div>
@@ -3398,7 +3433,7 @@ function PropertyCard({
           </div>
           <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
             <Users className="h-4 w-4" />
-            <span>{currentContract?.tenantName ?? "—"}</span>
+            <span className="truncate text-xs">{contractLabel}</span>
           </div>
         </div>
       </div>
@@ -3412,21 +3447,38 @@ function PropertyDetail({
   onDelete,
   canMutate,
   canMutateProperties,
+  canManageContracts,
+  ownerHidesTenantPii,
 }: {
   property: DbProperty;
   onBack: () => void;
   onDelete?: () => void;
   canMutate: boolean;
   canMutateProperties: boolean;
+  canManageContracts: boolean;
+  ownerHidesTenantPii: boolean;
 }) {
   const [activeTab, setActiveTab] = useState("info");
+  const [selectedContractSummary, setSelectedContractSummary] = useState<OwnerContractSummary | null>(null);
+  const [currentContractSummary, setCurrentContractSummary] = useState<OwnerContractSummary | null>(null);
   const [commissionTotals, setCommissionTotals] = useState<{ totalCommissionSar: number; monthCommissionSar: number; yearCommissionSar: number } | null>(null);
   const [contractHistory, setContractHistory] = useState<
-    Array<{ id: string; tenant: string; unitId: string | null; unitLabel: string; startDate: string; endDate: string; rent: number; status: string }>
+    Array<{
+      id: string;
+      tenant: string;
+      summary?: OwnerContractSummary | null;
+      unitId: string | null;
+      unitLabel: string;
+      startDate: string;
+      endDate: string;
+      rent: number;
+      status: string;
+    }>
   >([]);
   const [selectedContract, setSelectedContract] = useState<{
     id: string;
     tenant: string;
+    summary?: OwnerContractSummary | null;
     unitId: string | null;
     unitLabel: string;
     startDate: string;
@@ -3467,7 +3519,9 @@ function PropertyDetail({
     sort_order: number;
     components: Array<{ id: string; type: string; label: string; sizeM2?: string; description?: string; images: Array<{ id: string; url?: string }> }>;
   }>>([]);
-  const [unitContractMap, setUnitContractMap] = useState<Record<string, { status: string; tenantName: string; startDate: string; endDate: string }>>({});
+  const [unitContractMap, setUnitContractMap] = useState<
+    Record<string, { status: string; tenantName: string; startDate: string; endDate: string; summary?: OwnerContractSummary | null }>
+  >({});
   const [currentActiveContractId, setCurrentActiveContractId] = useState<string | null>(null);
   const [nextPaymentDate, setNextPaymentDate] = useState<string>("—");
   const [nextPaymentAmount, setNextPaymentAmount] = useState<number | null>(null);
@@ -3567,8 +3621,15 @@ function PropertyDetail({
       if (cancelled) return;
       const data = res.ok ? await res.json() : [];
       if (cancelled) return;
+      if (data?.summary) {
+        setSelectedContractSummary(data.summary as OwnerContractSummary);
+        setSelectedContractPayments([]);
+        setCanGeneratePayments(false);
+        return;
+      }
+      setSelectedContractSummary(null);
       setSelectedContractPayments(
-        (data ?? []).map((p: any) => ({
+        (Array.isArray(data) ? data : []).map((p: any) => ({
           id: String(p.id),
           due_date: p.due_date ? String(p.due_date) : "—",
           amount_sar: Number(p.amount_sar) || 0,
@@ -3626,7 +3687,8 @@ function PropertyDetail({
 
       const mappedHistory = contracts.map((c: any) => ({
         id: String(c.id),
-        tenant: c.contact?.name ? String(c.contact.name) : "—",
+        tenant: ownerHidesTenantPii ? "" : c.contact?.name ? String(c.contact.name) : "—",
+        summary: (c.owner_contract_summary as OwnerContractSummary | undefined) ?? null,
         unitId: c.unit_id ? String(c.unit_id) : null,
         unitLabel: c.unit_id ? (unitLabelMap.get(String(c.unit_id)) ?? "—") : "—",
         startDate: c.start_date ? String(c.start_date) : "—",
@@ -3642,14 +3704,18 @@ function PropertyDetail({
         const uid = String(c.unit_id);
         (perUnit[uid] ||= []).push(c);
       }
-      const nextUnitContractMap: Record<string, { status: string; tenantName: string; startDate: string; endDate: string }> = {};
+      const nextUnitContractMap: Record<
+        string,
+        { status: string; tenantName: string; startDate: string; endDate: string; summary?: OwnerContractSummary | null }
+      > = {};
       for (const [uid, list] of Object.entries(perUnit)) {
         const active = list.find((x: any) => String(x.status) === "active") ?? null;
         const chosen = active ?? list[0] ?? null;
         if (!chosen) continue;
         nextUnitContractMap[uid] = {
           status: String(chosen.status ?? ""),
-          tenantName: chosen.contact?.name ? String(chosen.contact.name) : "—",
+          tenantName: ownerHidesTenantPii ? "" : chosen.contact?.name ? String(chosen.contact.name) : "—",
+          summary: (chosen.owner_contract_summary as OwnerContractSummary | undefined) ?? null,
           startDate: chosen.start_date ? String(chosen.start_date) : "—",
           endDate: chosen.end_date ? String(chosen.end_date) : "—",
         };
@@ -3669,11 +3735,19 @@ function PropertyDetail({
         setCurrentContractStart(current.start_date ? String(current.start_date) : "—");
         setCurrentContractEnd(current.end_date ? String(current.end_date) : "—");
         if (!cancelled) {
-          const info = current.contact_id ? contactInfoMap.get(String(current.contact_id)) : null;
-          setCurrentTenantName(info?.name ?? "—");
-          setCurrentTenantPhone(info?.phone ?? "—");
+          if (ownerHidesTenantPii) {
+            setCurrentContractSummary((current.owner_contract_summary as OwnerContractSummary) ?? null);
+            setCurrentTenantName("—");
+            setCurrentTenantPhone("—");
+          } else {
+            setCurrentContractSummary(null);
+            const info = current.contact_id ? contactInfoMap.get(String(current.contact_id)) : null;
+            setCurrentTenantName(info?.name ?? "—");
+            setCurrentTenantPhone(info?.phone ?? "—");
+          }
         }
       } else {
+        setCurrentContractSummary(null);
         setCurrentTenantName("—");
         setCurrentTenantPhone("—");
         setCurrentContractStart("—");
@@ -3748,16 +3822,25 @@ function PropertyDetail({
         const occupied = units.filter((u: any) => u.status === "occupied").length;
         setOccupancyRate(total > 0 ? Math.round((occupied / total) * 100) : 0);
 
-        // Payment summary from contracts
         const paymentsAll = propData.payments ?? [];
-        const unpaid = paymentsAll.filter((p: any) => p.status !== "paid").reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
-        setUncollectedSar(unpaid);
-        const next = paymentsAll.find((p: any) => p.status !== "paid" && p.due_date);
-        setNextPaymentDate(next?.due_date ? String(next.due_date) : "—");
-        setNextPaymentAmount(next ? Number(next.amount_sar) || null : null);
-        const paid = paymentsAll.filter((p: any) => p.status === "paid").reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
-        const totalPayments = paymentsAll.reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
-        setCollectionRatePercent(totalPayments > 0 ? Math.round((paid / totalPayments) * 100) : 0);
+        if (ownerHidesTenantPii && current?.owner_contract_summary) {
+          const s = current.owner_contract_summary as OwnerContractSummary;
+          setUncollectedSar(s.rent_remaining_sar ?? 0);
+          setNextPaymentAmount(s.next_rent_amount_sar);
+          setNextPaymentDate(
+            s.days_until_next_rent_due != null ? formatDaysUntilAr(s.days_until_next_rent_due) : "—",
+          );
+          setCollectionRatePercent(0);
+        } else {
+          const unpaid = paymentsAll.filter((p: any) => p.status !== "paid").reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
+          setUncollectedSar(unpaid);
+          const next = paymentsAll.find((p: any) => p.status !== "paid" && p.due_date);
+          setNextPaymentDate(next?.due_date ? String(next.due_date) : "—");
+          setNextPaymentAmount(next ? Number(next.amount_sar) || null : null);
+          const paid = paymentsAll.filter((p: any) => p.status === "paid").reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
+          const totalPayments = paymentsAll.reduce((s: number, p: any) => s + (Number(p.amount_sar) || 0), 0);
+          setCollectionRatePercent(totalPayments > 0 ? Math.round((paid / totalPayments) * 100) : 0);
+        }
 
         // Units total rent
         const sum = units.reduce((s: number, u: any) => s + (Number(u.rent_amount) || 0), 0);
@@ -3767,7 +3850,7 @@ function PropertyDetail({
 
     void load();
     return () => { cancelled = true; };
-  }, [property.id, property.units_count, refreshTick, localTick]);
+  }, [property.id, property.units_count, refreshTick, localTick, ownerHidesTenantPii]);
 
   // Load documents when tab is active
   useEffect(() => {
@@ -3986,18 +4069,24 @@ function PropertyDetail({
                 </button>
                 </>
                 ) : null}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">المستأجر الحالي</span>
-                    <span className="font-medium text-gray-900 dark:text-white">{currentTenantName}</span>
+                {ownerHidesTenantPii ? (
+                  <div className="mt-4">
+                    <OwnerContractSummaryCards summary={currentContractSummary} compact />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">رقم الجوال</span>
-                    <span className="font-medium text-gray-900 dark:text-white" dir="ltr">
-                      {currentTenantPhone}
-                    </span>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">المستأجر الحالي</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{currentTenantName}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">رقم الجوال</span>
+                      <span className="font-medium text-gray-900 dark:text-white" dir="ltr">
+                        {currentTenantPhone}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -4233,7 +4322,7 @@ function PropertyDetail({
           <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">العقد الحالي</h3>
-              {canMutate ? (
+              {canManageContracts ? (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -4252,6 +4341,9 @@ function PropertyDetail({
                 </div>
               ) : null}
             </div>
+            {ownerHidesTenantPii ? (
+              <OwnerContractSummaryCards summary={currentContractSummary} />
+            ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <span className="text-sm text-gray-500 dark:text-gray-400">اسم المستأجر</span>
@@ -4272,6 +4364,7 @@ function PropertyDetail({
                 <p className="font-medium text-gray-900 dark:text-white">{currentContractEnd}</p>
               </div>
             </div>
+            )}
           </div>
 
           {/* Expenses Table */}
@@ -4501,7 +4594,11 @@ function PropertyDetail({
                             >
                               {isOccupied ? "مؤجرة" : "شاغرة"}
                             </span>
-                            {contract?.tenantName ? (
+                            {ownerHidesTenantPii && contract?.summary ? (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatDaysUntilAr(contract.summary.days_until_contract_end)}
+                              </span>
+                            ) : contract?.tenantName ? (
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 المستأجر: <span className="font-semibold text-gray-900 dark:text-white">{contract.tenantName}</span>
                               </span>
@@ -4615,7 +4712,11 @@ function PropertyDetail({
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600 dark:bg-[#1a3528] dark:text-gray-400">
                   <tr>
-                    <th className="px-4 py-3 text-right font-medium">اسم المستأجر</th>
+                    {!ownerHidesTenantPii ? (
+                      <th className="px-4 py-3 text-right font-medium">اسم المستأجر</th>
+                    ) : (
+                      <th className="px-4 py-3 text-right font-medium">ملخص العقد</th>
+                    )}
                     <th className="px-4 py-3 text-right font-medium">الوحدة</th>
                     <th className="px-4 py-3 text-right font-medium">بداية العقد</th>
                     <th className="px-4 py-3 text-right font-medium">نهاية العقد</th>
@@ -4629,10 +4730,17 @@ function PropertyDetail({
                     <tr
                       key={contract.id}
                       className="cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1a3528]/50"
-                      onClick={() => setSelectedContract(contract)}
+                      onClick={() => {
+                        setSelectedContract(contract);
+                        setSelectedContractSummary(contract.summary ?? null);
+                      }}
                       title="عرض تفاصيل العقد"
                     >
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{contract.tenant}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">
+                        {ownerHidesTenantPii && contract.summary
+                          ? formatDaysUntilAr(contract.summary.days_until_contract_end)
+                          : contract.tenant}
+                      </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.unitLabel}</td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.startDate}</td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.endDate}</td>
@@ -4643,28 +4751,32 @@ function PropertyDetail({
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingContractId(contract.id);
-                            }}
-                            className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-emerald-800/30 dark:bg-[#1a3528] dark:text-gray-200 dark:hover:bg-emerald-800/20"
-                          >
-                            تعديل
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeletingContractId(contract.id);
-                            }}
-                            className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
-                          >
-                            حذف
-                          </button>
-                        </div>
+                        {canManageContracts ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingContractId(contract.id);
+                              }}
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-emerald-800/30 dark:bg-[#1a3528] dark:text-gray-200 dark:hover:bg-emerald-800/20"
+                            >
+                              تعديل
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeletingContractId(contract.id);
+                              }}
+                              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+                            >
+                              حذف
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -4688,11 +4800,16 @@ function PropertyDetail({
                   </button>
                 </div>
 
+                {ownerHidesTenantPii ? (
+                  <OwnerContractSummaryCards summary={selectedContractSummary} />
+                ) : null}
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  {!ownerHidesTenantPii ? (
                   <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
                     <p className="text-xs text-gray-500 dark:text-gray-400">المستأجر</p>
                     <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedContract.tenant}</p>
                   </div>
+                  ) : null}
                   <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
                     <p className="text-xs text-gray-500 dark:text-gray-400">الوحدة</p>
                     <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedContract.unitLabel}</p>
@@ -4717,6 +4834,7 @@ function PropertyDetail({
                   </div>
                 </div>
 
+                {!ownerHidesTenantPii ? (
                 <div className="mt-5 rounded-xl border border-gray-100 bg-white dark:border-emerald-800/20 dark:bg-[#0f1e14]">
                   <div className="flex items-center justify-between border-b border-gray-100 p-3 dark:border-emerald-800/20">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">الدفوعات</p>
@@ -4872,26 +4990,31 @@ function PropertyDetail({
                     )}
                   </div>
                 </div>
+                ) : null}
 
                 <div className="mt-5 flex justify-end">
-                  <button
-                    onClick={() => {
-                      if (!selectedContract?.id) return;
-                      setEditingContractId(selectedContract.id);
-                    }}
-                    className="mr-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-emerald-800/30 dark:bg-[#1a3528] dark:text-gray-200 dark:hover:bg-emerald-800/20"
-                  >
-                    تعديل
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!selectedContract?.id) return;
-                      setDeletingContractId(selectedContract.id);
-                    }}
-                    className="mr-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
-                  >
-                    حذف
-                  </button>
+                  {canManageContracts ? (
+                    <>
+                      <button
+                        onClick={() => {
+                          if (!selectedContract?.id) return;
+                          setEditingContractId(selectedContract.id);
+                        }}
+                        className="mr-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-emerald-800/30 dark:bg-[#1a3528] dark:text-gray-200 dark:hover:bg-emerald-800/20"
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!selectedContract?.id) return;
+                          setDeletingContractId(selectedContract.id);
+                        }}
+                        className="mr-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+                      >
+                        حذف
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     onClick={() => setSelectedContract(null)}
                     className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"

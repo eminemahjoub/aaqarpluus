@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { formatDaysUntilAr } from "@/lib/owner-tenant-privacy";
 
 type StatCard = {
   label: string;
@@ -31,6 +32,7 @@ type PendingRow = {
   property: string;
   unit: string;
   tenant: string;
+  rentDueLabel: string;
   date: string;
   amount: number;
   overdue: string;
@@ -155,14 +157,20 @@ export function OwnerHomeDashboard({
           (stats.pendingPayments ?? []).map((r: any) => {
             const due = r.due_date ? new Date(String(r.due_date)) : null;
             const days = due ? daysBetween(due, now) : 0;
+            const summary = r.owner_contract_summary;
             return {
               id: String(r.id),
               property: String(r.property_name ?? "—"),
               unit: String(r.unit_label ?? "—"),
               tenant: String(r.tenantName ?? "—"),
+              rentDueLabel: summary
+                ? formatDaysUntilAr(summary.days_until_next_rent_due)
+                : "—",
               date: r.due_date ? String(r.due_date) : "—",
               amount: Number(r.amount_sar) || 0,
-              overdue: `${days} يوم`,
+              overdue: summary
+                ? formatDaysUntilAr(summary.days_until_next_rent_due)
+                : `${days} يوم`,
               status: days > 0 ? "overdue" : "pending",
             } satisfies PendingRow;
           })
@@ -334,16 +342,16 @@ export function OwnerHomeDashboard({
                 <tr>
                   <th className="px-4 py-3 text-right font-medium">العقار</th>
                   <th className="px-4 py-3 text-right font-medium">الوحدة</th>
-                  <th className="px-4 py-3 text-right font-medium">المستأجر</th>
-                  <th className="px-4 py-3 text-right font-medium">تاريخ الدفعة</th>
+                  <th className="px-4 py-3 text-right font-medium">العقار / الوحدة</th>
+                  <th className="px-4 py-3 text-right font-medium">تحصيل الإيجار</th>
                   <th className="px-4 py-3 text-right font-medium">المبلغ</th>
-                  <th className="px-4 py-3 text-right font-medium">متأخرة منذ</th>
+                  <th className="px-4 py-3 text-right font-medium">الموعد</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
                 {pendingCollections.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-gray-400 dark:text-gray-500">
+                    <td colSpan={4} className="py-8 text-center text-gray-400 dark:text-gray-500">
                       <Search className="mx-auto h-8 w-8 mb-2" />
                       لا توجد تحصيلات معلقة
                     </td>
@@ -351,10 +359,11 @@ export function OwnerHomeDashboard({
                 ) : (
                   pendingCollections.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{item.property}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.unit}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.tenant}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.date}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">
+                        {item.property}
+                        <span className="block text-xs text-gray-500">{item.unit}</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.rentDueLabel}</td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white">{item.amount.toLocaleString()}</td>
                       <td className="px-4 py-3"><span className="text-red-500">{item.overdue}</span></td>
                     </tr>
@@ -385,7 +394,7 @@ export function OwnerHomeDashboard({
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600 dark:bg-[#1a3528] dark:text-gray-400">
                   <tr>
-                    <th className="px-4 py-3 text-right font-medium">المستأجر</th>
+                    <th className="px-4 py-3 text-right font-medium">العقار / الوحدة</th>
                     <th className="px-4 py-3 text-right font-medium">المبلغ</th>
                     <th className="px-4 py-3 text-right font-medium">الحالة</th>
                   </tr>
@@ -393,7 +402,12 @@ export function OwnerHomeDashboard({
                 <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
                   {monthPayments.slice(0, 8).map((p: any) => (
                     <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{p.contact_name ?? p.tenantName ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {p.property_name ?? "—"}
+                        {p.unit_label ? (
+                          <span className="block text-xs text-gray-500">{p.unit_label}</span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white">{(Number(p.amount_sar) || 0).toLocaleString("ar-SA")} ر.س</td>
                       <td className="px-4 py-3">
                         <span className={["rounded-full px-2 py-0.5 text-xs font-medium", p.status === "paid" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : p.status === "overdue" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"].join(" ")}>

@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
+import { denyIfOwnerCannotManageTenantContracts } from "@/lib/mutate-guard";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,7 +43,13 @@ export async function GET(req: NextRequest) {
     if (contactId) qb = qb.andWhere("c.contact_id = :contactId", { contactId });
 
     const contracts = await qb.getMany();
-    return ok(contracts);
+    if (!ownerHidesTenantPii(user)) return ok(contracts);
+
+    const ids = contracts.map((c: any) => String(c.id)).filter(Boolean);
+    const payMap = await paymentsByContractId(ds, ids);
+    return ok(
+      contracts.map((c: any) => sanitizeContractForOwner(c as Record<string, unknown>, payMap[String(c.id)] ?? []))
+    );
   } catch (err) {
     return serverError(err);
   }
@@ -51,6 +59,8 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const denied = denyIfOwnerCannotManageTenantContracts(user);
+    if (denied) return denied;
 
     const body = await req.json();
 

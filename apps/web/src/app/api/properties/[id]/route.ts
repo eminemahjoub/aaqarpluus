@@ -3,6 +3,7 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -63,6 +64,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .where("e.property_id = :id", { id })
       .orderBy("e.created_at", "DESC")
       .getMany();
+
+    const hidePii = ownerHidesTenantPii(user);
+    if (hidePii) {
+      const payMap = await paymentsByContractId(ds, contractIds.map(String));
+      const safeContracts = contracts.map((c: any) =>
+        sanitizeContractForOwner(c as Record<string, unknown>, payMap[String(c.id)] ?? [])
+      );
+      return ok({ ...(property as any), units, contracts: safeContracts, payments: [], revenues, expenses });
+    }
 
     return ok({ ...(property as any), units, contracts, payments, revenues, expenses });
   } catch (err) {

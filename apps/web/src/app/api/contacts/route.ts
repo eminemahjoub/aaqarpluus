@@ -4,6 +4,7 @@ import { getUserFromRequest, ok, created, badRequest, unauthorized } from "@/lib
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { handleError, unauthorized as throwUnauthorized } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
+import { ownerHidesTenantPii, sanitizeContactForOwner } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,7 +45,10 @@ export async function GET(req: NextRequest) {
            ORDER BY c.created_at DESC`,
           params
         );
-        return ok(rows ?? []);
+        const items = (rows ?? []).map((r: Record<string, unknown>) =>
+          ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
+        );
+        return ok(items);
       }
 
       const totalRows = await ds.query(
@@ -66,7 +70,10 @@ export async function GET(req: NextRequest) {
          LIMIT $${idx++} OFFSET $${idx++}`,
         params
       );
-      return ok(paginated({ items: rows ?? [], total, page: page.page, limit: page.limit, search }));
+      const agencyItems = (rows ?? []).map((r: Record<string, unknown>) =>
+        ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
+      );
+      return ok(paginated({ items: agencyItems, total, page: page.page, limit: page.limit, search }));
     }
 
     let qb = ds
@@ -81,10 +88,16 @@ export async function GET(req: NextRequest) {
 
     if (!page) {
       const contacts = await qb.getMany();
-      return ok(contacts);
+      const mapped = contacts.map((c) =>
+        ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : c
+      );
+      return ok(mapped);
     }
     const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
-    return ok(paginated({ items, total, page: page.page, limit: page.limit, search }));
+    const mappedItems = items.map((c) =>
+      ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : c
+    );
+    return ok(paginated({ items: mappedItems, total, page: page.page, limit: page.limit, search }));
   } catch (err) {
     return handleError(err);
   }
@@ -96,6 +109,9 @@ export async function POST(req: NextRequest) {
     if (!user) return unauthorized();
 
     const body = await req.json();
+    if (ownerHidesTenantPii(user) && String(body?.type ?? "tenant") === "tenant") {
+      return unauthorized();
+    }
     if (!body.name?.trim()) return badRequest("الاسم مطلوب");
 
 

@@ -30,11 +30,17 @@ export function useCanMutate() {
     };
   }, []);
 
+  const ownerHidesTenantPii = userType === "owner" || userType === "personal";
+
   return {
     /** المكتب فقط — عقارات ووحدات */
     canMutateProperties,
     /** المالك + المكتب — مهام، عقود، جهات اتصال… */
     canMutate,
+    /** المالك لا يرى اسم/جوال المستأجر ولا جدول السداد */
+    ownerHidesTenantPii,
+    /** تعديل عقود/مستأجر — المكتب فقط */
+    canManageContracts: userType === "agency",
     loading,
     userType,
     isOwner: userType === "owner",

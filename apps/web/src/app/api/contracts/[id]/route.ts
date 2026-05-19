@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { denyIfOwnerCannotManageTenantContracts } from "@/lib/mutate-guard";
 import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,7 +30,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     } else if (String((contract as any).owner_id) !== String(user.userId)) {
       return unauthorized();
     }
-    return ok(contract);
+    if (!ownerHidesTenantPii(user)) return ok(contract);
+
+    const payMap = await paymentsByContractId(ds, [String(id)]);
+    return ok(sanitizeContractForOwner(contract as Record<string, unknown>, payMap[String(id)] ?? []));
   } catch (err) {
     return serverError(err);
   }
@@ -38,6 +43,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const denied = denyIfOwnerCannotManageTenantContracts(user);
+    if (denied) return denied;
 
     const { id } = await params;
     const body = await req.json();
@@ -102,6 +109,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const user = await getUserFromRequest(req);
     if (!user) return unauthorized();
+    const denied = denyIfOwnerCannotManageTenantContracts(user);
+    if (denied) return denied;
 
     const { id } = await params;
     const ds = await getDataSource();

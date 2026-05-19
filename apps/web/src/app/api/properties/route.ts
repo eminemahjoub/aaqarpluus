@@ -6,6 +6,11 @@ import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { z } from "zod";
 import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
 import { parsePagination, paginated } from "@/lib/pagination";
+import {
+  buildOwnerContractSummary,
+  ownerHidesTenantPii,
+  paymentsByContractId,
+} from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest) {
   try {
@@ -71,6 +76,7 @@ export async function GET(req: NextRequest) {
     }
 
     let contractMap: Record<string, any> = {};
+    const hidePii = ownerHidesTenantPii(user);
     if (propIds.length > 0) {
       const contracts = await ds
         .getRepository("Contract")
@@ -84,16 +90,28 @@ export async function GET(req: NextRequest) {
         .orderBy("c.start_date", "DESC")
         .getMany();
 
+      const contractIds = contracts.map((c: any) => String(c.id)).filter(Boolean);
+      const payMap = hidePii ? await paymentsByContractId(ds, contractIds) : {};
+
       for (const c of contracts) {
         const pid = (c as any).property_id;
         if (!pid || contractMap[pid]) continue;
-        contractMap[pid] = {
-          contact_name: (c as any).contact?.name ?? "—",
-          contact_phone: (c as any).contact?.phone ?? null,
-          unit_label: (c as any).unit?.label ?? "—",
-          start_date: (c as any).start_date ?? "—",
-          end_date: (c as any).end_date ?? "—",
-        };
+        if (hidePii) {
+          contractMap[pid] = buildOwnerContractSummary({
+            end_date: (c as any).end_date,
+            start_date: (c as any).start_date,
+            unit_label: (c as any).unit?.label,
+            payments: payMap[String(c.id)] ?? [],
+          });
+        } else {
+          contractMap[pid] = {
+            contact_name: (c as any).contact?.name ?? "—",
+            contact_phone: (c as any).contact?.phone ?? null,
+            unit_label: (c as any).unit?.label ?? "—",
+            start_date: (c as any).start_date ?? "—",
+            end_date: (c as any).end_date ?? "—",
+          };
+        }
       }
     }
 

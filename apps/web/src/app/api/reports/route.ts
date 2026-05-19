@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
+import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest) {
   try {
@@ -87,6 +88,25 @@ export async function GET(req: NextRequest) {
         `,
         params
       );
+      if (ownerHidesTenantPii(user)) {
+        const mapped = (rows as any[]).map((r) => {
+          const summary = buildOwnerContractSummary({
+            end_date: r.contract_start,
+            payments: [{ due_date: r.due_date, amount_sar: r.amount_sar, status: r.status }],
+          });
+          return {
+            id: r.id,
+            amount_sar: r.amount_sar,
+            due_date: r.due_date,
+            paid_at: r.paid_at,
+            status: r.status,
+            property_name: r.property_name,
+            unit_label: r.unit_label,
+            owner_contract_summary: summary,
+          };
+        });
+        return ok(mapped);
+      }
       return ok(rows);
     }
 
@@ -120,6 +140,24 @@ export async function GET(req: NextRequest) {
         `,
         params
       );
+      if (ownerHidesTenantPii(user)) {
+        return ok(
+          (rows as any[]).map((r) => ({
+            id: r.id,
+            status: r.status,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            rent_total_sar: r.rent_total_sar,
+            property_name: r.property_name,
+            unit_label: r.unit_label,
+            owner_contract_summary: buildOwnerContractSummary({
+              end_date: r.end_date,
+              start_date: r.start_date,
+              unit_label: r.unit_label,
+            }),
+          }))
+        );
+      }
       return ok(rows);
     }
 

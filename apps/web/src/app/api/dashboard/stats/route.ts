@@ -3,6 +3,7 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
 import { getAccessiblePropertyIds } from "@/lib/office-scope";
+import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
 
 type CacheEntry = { expiresAt: number; value: any };
 const STATS_CACHE = new Map<string, CacheEntry>();
@@ -113,7 +114,8 @@ export async function GET(req: NextRequest) {
       `
       SELECT
         cp.id, cp.amount_sar, cp.due_date, cp.status,
-        c.contact_id, c.property_id, c.unit_id,
+        c.id AS contract_id, c.contact_id, c.property_id, c.unit_id,
+        c.end_date AS contract_end_date,
         p.name AS property_name,
         u.label AS unit_label
       FROM contract_payments cp
@@ -132,15 +134,23 @@ export async function GET(req: NextRequest) {
       [Array.isArray(propertyIds) ? propertyIds : ownerIds]
     );
 
-    // Get tenant names
-    const contactIds = [...new Set(pendingPayments.map((r: any) => r.contact_id).filter(Boolean))];
+    const hidePii = ownerHidesTenantPii(user);
+
+    // Contract end dates for owner payment summaries
+    const pendingContractIds = [...new Set(pendingPayments.map((r: any) => r.contract_id).filter(Boolean))];
+    let contractEndMap: Record<string, string> = {};
+    if (hidePii && pendingContractIds.length > 0) {
+      const ends = await ds.query(`SELECT id, end_date FROM contracts WHERE id = ANY($1)`, [pendingContractIds]);
+      contractEndMap = Object.fromEntries(ends.map((c: any) => [String(c.id), String(c.end_date ?? "")]));
+    }
+
     let contactMap: Record<string, string> = {};
-    if (contactIds.length > 0) {
-      const contacts = await ds.query(
-        `SELECT id, name FROM contacts WHERE id = ANY($1)`,
-        [contactIds]
-      );
-      contactMap = Object.fromEntries(contacts.map((c: any) => [c.id, c.name]));
+    if (!hidePii) {
+      const contactIds = [...new Set(pendingPayments.map((r: any) => r.contact_id).filter(Boolean))];
+      if (contactIds.length > 0) {
+        const contacts = await ds.query(`SELECT id, name FROM contacts WHERE id = ANY($1)`, [contactIds]);
+        contactMap = Object.fromEntries(contacts.map((c: any) => [c.id, c.name]));
+      }
     }
 
     // Contract counts
@@ -163,16 +173,31 @@ export async function GET(req: NextRequest) {
     const monthEnd = nextMonth.toISOString().split("T")[0];
 
     const monthPayments = await ds.query(
+      hidePii
+        ? `
+      SELECT cp.id, cp.amount_sar, cp.due_date, cp.paid_at, cp.status,
+             c.end_date AS contract_end_date,
+             p.name AS property_name,
+             u.label AS unit_label
+      FROM contract_payments cp
+      JOIN contracts c ON c.id = cp.contract_id
+      LEFT JOIN properties p ON p.id = c.property_id
+      LEFT JOIN units u ON u.id = c.unit_id
+      WHERE ${
+        Array.isArray(propertyIds) ? "c.property_id = ANY($1)" : "c.owner_id = ANY($1)"
+      }
+        AND cp.due_date >= $2
+        AND cp.due_date < $3
+      ORDER BY cp.due_date ASC
       `
+        : `
       SELECT cp.id, cp.amount_sar, cp.due_date, cp.paid_at, cp.status,
              ct.name AS contact_name
       FROM contract_payments cp
       JOIN contracts c ON c.id = cp.contract_id
       LEFT JOIN contacts ct ON ct.id = c.contact_id
       WHERE ${
-        Array.isArray(propertyIds)
-          ? "c.property_id = ANY($1)"
-          : "c.owner_id = ANY($1)"
+        Array.isArray(propertyIds) ? "c.property_id = ANY($1)" : "c.owner_id = ANY($1)"
       }
         AND cp.due_date >= $2
         AND cp.due_date < $3
@@ -240,11 +265,38 @@ export async function GET(req: NextRequest) {
       occupiedUnits,
       totalContracts,
       activeContracts,
-      pendingPayments: pendingPayments.map((r: any) => ({
-        ...r,
-        tenantName: contactMap[r.contact_id] ?? "—",
-      })),
-      monthPayments,
+      pendingPayments: pendingPayments.map((r: any) => {
+        if (!hidePii) {
+          return { ...r, tenantName: contactMap[r.contact_id] ?? "—" };
+        }
+        return {
+          id: r.id,
+          amount_sar: r.amount_sar,
+          due_date: r.due_date,
+          status: r.status,
+          property_name: r.property_name,
+          unit_label: r.unit_label,
+          owner_contract_summary: buildOwnerContractSummary({
+            end_date: contractEndMap[String(r.contract_id)] ?? null,
+            payments: [{ due_date: r.due_date, amount_sar: r.amount_sar, status: r.status }],
+          }),
+        };
+      }),
+      monthPayments: hidePii
+        ? monthPayments.map((r: any) => ({
+            id: r.id,
+            amount_sar: r.amount_sar,
+            due_date: r.due_date,
+            paid_at: r.paid_at,
+            status: r.status,
+            property_name: r.property_name,
+            unit_label: r.unit_label,
+            owner_contract_summary: buildOwnerContractSummary({
+              end_date: r.contract_end_date,
+              payments: [{ due_date: r.due_date, amount_sar: r.amount_sar, status: r.status }],
+            }),
+          }))
+        : monthPayments,
       calendarData: { tasks, revenues, expenses, contracts, monthPayments },
     };
     STATS_CACHE.set(cacheKey, { value, expiresAt: Date.now() + TTL_MS });
