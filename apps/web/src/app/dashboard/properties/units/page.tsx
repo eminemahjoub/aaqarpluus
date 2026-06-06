@@ -18,7 +18,7 @@ type DbProperty = {
   unit_identifiers: string | null;
 };
 
-type TenantOption = { id: string; name: string; phone?: string | null };
+type TenantOption = { id: string; name: string; phone?: string | null; sex?: string | null; id_number?: string | null };
 
 function localCalendarYmd(d: Date = new Date()) {
   const yy = d.getFullYear();
@@ -70,6 +70,8 @@ type UnitDraft = {
   contractEndDate: string;
   newTenantName: string;
   newTenantPhone: string;
+  newTenantSex: string;
+  newTenantIdNumber: string;
   defaults: {
     livingRooms: number;
     bedrooms: number;
@@ -155,7 +157,7 @@ const defaultUnitDefaults = () => ({
 const defaultsForUnitType = (unitType: UnitType): UnitDraft["defaults"] => {
   if (unitType === "shop") {
     return {
-      livingRooms: 1, // used as "workspaces/offices"
+      livingRooms: 2, // used as "workspaces/offices" + storage
       bedrooms: 0,
       bathrooms: 1,
       hasKitchen: false,
@@ -186,10 +188,11 @@ const generateUnitComponents = (unitType: UnitType, defaults: UnitDraft["default
   const items: ComponentDraft[] = [];
   if (unitType === "shop") {
     for (let i = 1; i <= defaults.livingRooms; i++) {
+      const isLastOffice = i === defaults.livingRooms && defaults.livingRooms > 1;
       items.push({
         id: makeId(),
-        type: "office",
-        label: defaults.livingRooms === 1 ? "مساحة عمل" : `مساحة عمل ${i}`,
+        type: isLastOffice ? "storage" : "office",
+        label: isLastOffice ? "مستودع" : (defaults.livingRooms === 1 ? "مساحة عمل" : `مساحة عمل ${i}`),
         images: [{ id: makeId() }],
       });
     }
@@ -238,6 +241,54 @@ const generateUnitComponents = (unitType: UnitType, defaults: UnitDraft["default
   return items;
 };
 
+function TenantCardPopup({
+  tenant,
+  onClose,
+}: {
+  tenant: TenantOption | null;
+  onClose: () => void;
+}) {
+  if (!tenant) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="w-80 rounded-2xl bg-white p-6 shadow-xl dark:bg-[#1a3528]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-4 text-center text-lg font-bold text-gray-900 dark:text-white">معلومات المستأجر</h3>
+        <div className="space-y-3 text-right">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-emerald-800/30">
+            <span className="text-sm text-gray-500 dark:text-gray-400">الاسم</span>
+            <span className="font-medium text-gray-900 dark:text-white">{tenant.name}</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-emerald-800/30">
+            <span className="text-sm text-gray-500 dark:text-gray-400">رقم الجوال</span>
+            <span className="font-medium text-gray-900 dark:text-white" dir="ltr">{tenant.phone || "—"}</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-emerald-800/30">
+            <span className="text-sm text-gray-500 dark:text-gray-400">الجنس</span>
+            <span className="font-medium text-gray-900 dark:text-white">{tenant.sex || "—"}</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-emerald-800/30">
+            <span className="text-sm text-gray-500 dark:text-gray-400">رقم الهوية</span>
+            <span className="font-medium text-gray-900 dark:text-white">{tenant.id_number || "—"}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-[#102318] dark:text-gray-300 dark:hover:bg-[#0a1a12]"
+        >
+          إغلاق
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const serializeComponents = (components: ComponentDraft[]) =>
   components.map((c) => ({
     ...c,
@@ -257,6 +308,7 @@ export default function UnitsBuilderPage() {
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
   const refreshTick = useRealtimeRefresh();
+  const [popupTenant, setPopupTenant] = React.useState<TenantOption | null>(null);
 
   const syncUnitTenant = React.useCallback(
     async (u: UnitDraft) => {
@@ -425,6 +477,8 @@ export default function UnitsBuilderPage() {
           id: String(c.id),
           name: String(c.name ?? "—"),
           phone: c.phone ? String(c.phone) : null,
+          sex: c.sex ? String(c.sex) : null,
+          id_number: c.id_number ? String(c.id_number) : null,
         })),
       );
 
@@ -494,6 +548,8 @@ export default function UnitsBuilderPage() {
                 ...tenant,
                 newTenantName: "",
                 newTenantPhone: "",
+                newTenantSex: "",
+                newTenantIdNumber: "",
                 defaults: defaultsForUnitType(unitType),
                 components: [] as ComponentDraft[],
               };
@@ -541,6 +597,8 @@ export default function UnitsBuilderPage() {
           ...tenant,
           newTenantName: "",
           newTenantPhone: "",
+          newTenantSex: "",
+          newTenantIdNumber: "",
           defaults: defaultsForUnitType(unitType),
           components,
         };
@@ -588,7 +646,7 @@ export default function UnitsBuilderPage() {
     (
       unitId: string,
       patch: Partial<
-        Pick<UnitDraft, "tenantContactId" | "contractStartDate" | "contractEndDate" | "newTenantName" | "newTenantPhone">
+        Pick<UnitDraft, "tenantContactId" | "contractStartDate" | "contractEndDate" | "newTenantName" | "newTenantPhone" | "newTenantSex" | "newTenantIdNumber">
       >,
     ) => {
       setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
@@ -606,6 +664,8 @@ export default function UnitsBuilderPage() {
         body: JSON.stringify({
           name: u.newTenantName.trim(),
           phone: u.newTenantPhone.trim() || null,
+          sex: u.newTenantSex.trim() || null,
+          id_number: u.newTenantIdNumber.trim() || null,
           type: "tenant",
           owner_id: propertyOwnerId,
         }),
@@ -616,11 +676,13 @@ export default function UnitsBuilderPage() {
         id: String(c.id),
         name: String(c.name ?? u.newTenantName),
         phone: c.phone ? String(c.phone) : null,
+        sex: c.sex ? String(c.sex) : null,
+        id_number: c.id_number ? String(c.id_number) : null,
       };
       setTenantOptions((prev) => (prev.some((t) => t.id === opt.id) ? prev : [...prev, opt]));
       setUnits((prev) =>
         prev.map((row) =>
-          row.id === unitId ? { ...row, tenantContactId: opt.id, newTenantName: "", newTenantPhone: "" } : row,
+          row.id === unitId ? { ...row, tenantContactId: opt.id, newTenantName: "", newTenantPhone: "", newTenantSex: "", newTenantIdNumber: "" } : row,
         ),
       );
     },
@@ -772,6 +834,7 @@ export default function UnitsBuilderPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">جاري توليد الوحدات...</p>
           </div>
         ) : null}
+        <TenantCardPopup tenant={popupTenant} onClose={() => setPopupTenant(null)} />
         {units.map((unit) => (
           <details
             key={unit.id}
@@ -788,7 +851,7 @@ export default function UnitsBuilderPage() {
                   {unit.unitType !== "shop" && unit.defaults.hasBalcony ? " · بلكونة" : ""}{" "}
                   {unit.unitType !== "shop" && unit.defaults.hasKitchen ? " · مطبخ" : ""}
                   {!ownerHidesTenantPii && unit.tenantContactId
-                    ? ` · مستأجر: ${tenantSelectOptions.find((t) => t.id === unit.tenantContactId)?.name ?? "—"}`
+                    ? <> · مستأجر: <button type="button" onClick={() => setPopupTenant(tenantSelectOptions.find((t) => t.id === unit.tenantContactId) ?? null)} className="font-semibold text-indigo-600 hover:text-indigo-800 underline dark:text-indigo-400 dark:hover:text-indigo-300">{tenantSelectOptions.find((t) => t.id === unit.tenantContactId)?.name ?? "—"}</button></>
                     : " · شاغرة"}
                 </p>
               </div>
@@ -909,19 +972,41 @@ export default function UnitsBuilderPage() {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">جوال المستأجر</label>
+                      <input
+                        type="tel"
+                        value={unit.newTenantPhone}
+                        onChange={(e) => updateUnitTenant(unit.id, { newTenantPhone: e.target.value })}
+                        placeholder="05xxxxxxxx"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">الجنس</label>
+                      <select
+                        value={unit.newTenantSex}
+                        onChange={(e) => updateUnitTenant(unit.id, { newTenantSex: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      >
+                        <option value="">— اختر الجنس —</option>
+                        <option value="ذكر">ذكر</option>
+                        <option value="أنثى">أنثى</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">رقم الهوية</label>
                       <div className="flex gap-2">
                         <input
-                          type="tel"
-                          value={unit.newTenantPhone}
-                          onChange={(e) => updateUnitTenant(unit.id, { newTenantPhone: e.target.value })}
-                          placeholder="05xxxxxxxx"
+                          type="text"
+                          value={unit.newTenantIdNumber}
+                          onChange={(e) => updateUnitTenant(unit.id, { newTenantIdNumber: e.target.value })}
+                          placeholder="رقم الهوية الوطنية"
                           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
                         />
                         <button
                           type="button"
                           onClick={() => void createTenantForUnit(unit.id)}
                           disabled={!unit.newTenantName.trim()}
-                          className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                         >
                           إضافة
                         </button>

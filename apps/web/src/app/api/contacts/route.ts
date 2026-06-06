@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
     }
     if (!body.name?.trim()) return badRequest("الاسم مطلوب");
 
+    const isTenant = String(body?.type ?? "tenant") === "tenant";
+    if (isTenant) {
+      if (body.sex && !["ذكر", "أنثى"].includes(body.sex)) return badRequest("الجنس يجب أن يكون ذكر أو أنثى");
+    }
 
     const ds = await getDataSource();
     const repo = ds.getRepository("Contact");
@@ -137,6 +141,8 @@ export async function POST(req: NextRequest) {
       name: body.name.trim(),
       phone: body.phone?.trim() || null,
       alternative_phone: body.alternative_phone?.trim() || null,
+      sex: isTenant ? (body.sex?.trim() || null) : null,
+      id_number: isTenant ? (body.id_number?.trim() || null) : null,
       type: body.type ?? "tenant",
       status: body.status ?? "active",
     } as any);

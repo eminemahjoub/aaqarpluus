@@ -13,6 +13,8 @@ type ContactRow = {
   name: string;
   phone: string | null;
   alternative_phone: string | null;
+  sex: string | null;
+  id_number: string | null;
   type: "tenant" | "owner" | "service_provider" | "client" | "other" | "office";
   status: string;
 };
@@ -34,7 +36,7 @@ function toArabicType(db: ContactRow["type"]) {
 }
 
 export function ContactsContent() {
-  const [newContact, setNewContact] = React.useState({ name: "", phone: "", type: "مستأجر" });
+  const [newContact, setNewContact] = React.useState({ name: "", phone: "", sex: "", idNumber: "", type: "مستأجر" });
 
   const refreshTick = useRealtimeRefresh();
   const qc = useQueryClient();
@@ -60,6 +62,8 @@ export function ContactsContent() {
         body: JSON.stringify({
           name: newContact.name.trim(),
           phone: newContact.phone.trim() || null,
+          sex: newContact.sex.trim() || null,
+          id_number: newContact.idNumber.trim() || null,
           type: toDbContactType(newContact.type),
           status: "active",
         }),
@@ -71,7 +75,7 @@ export function ContactsContent() {
       return res.json().catch(() => null);
     },
     onSuccess: async () => {
-      setNewContact({ name: "", phone: "", type: "مستأجر" });
+      setNewContact({ name: "", phone: "", sex: "", idNumber: "", type: "مستأجر" });
       await qc.invalidateQueries({ queryKey: ["contacts"] });
     },
   });
@@ -140,6 +144,32 @@ export function ContactsContent() {
                 </div>
               </div>
 
+              <div>
+                <label className="mb-2 block text-right text-sm font-medium text-gray-700 dark:text-gray-300">الجنس</label>
+                <select
+                  value={newContact.sex}
+                  onChange={(e) => setNewContact({ ...newContact, sex: e.target.value })}
+                  required={newContact.type === "مستأجر"}
+                  className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-right text-gray-900 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                >
+                  <option value="">— اختر الجنس —</option>
+                  <option value="ذكر">ذكر</option>
+                  <option value="أنثى">أنثى</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-right text-sm font-medium text-gray-700 dark:text-gray-300">رقم الهوية</label>
+                <input
+                  type="text"
+                  value={newContact.idNumber}
+                  onChange={(e) => setNewContact({ ...newContact, idNumber: e.target.value })}
+                  placeholder="رقم الهوية الوطنية"
+                  required={newContact.type === "مستأجر"}
+                  className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-right text-gray-900 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                />
+              </div>
+
               <button
                 type="submit"
                 className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-700"
@@ -182,6 +212,12 @@ export function ContactsContent() {
                             <Phone className="h-3 w-3" />
                             <span dir="ltr">{contact.phone || "—"}</span>
                           </div>
+                          {contact.sex ? (
+                            <span>{contact.sex}</span>
+                          ) : null}
+                          {contact.id_number ? (
+                            <span className="font-mono text-xs">{contact.id_number}</span>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">

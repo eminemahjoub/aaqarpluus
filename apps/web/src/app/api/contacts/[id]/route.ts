@@ -31,11 +31,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     if (!contact) return unauthorized();
 
+    const newType = body.type ?? (contact as any).type;
+    const isTenant = newType === "tenant";
+    if (body.sex && !["ذكر", "أنثى"].includes(body.sex)) return badRequest("الجنس يجب أن يكون ذكر أو أنثى");
+
     await repo.update(id, {
       name: body.name ?? (contact as any).name,
       phone: body.phone !== undefined ? body.phone : (contact as any).phone,
       alternative_phone: body.alternative_phone !== undefined ? body.alternative_phone : (contact as any).alternative_phone,
-      type: body.type ?? (contact as any).type,
+      sex: body.sex !== undefined ? (body.sex?.trim() || null) : (isTenant ? (contact as any).sex : null),
+      id_number: body.id_number !== undefined ? (body.id_number?.trim() || null) : (isTenant ? (contact as any).id_number : null),
+      type: newType,
       status: body.status ?? (contact as any).status,
     } as any);
 
