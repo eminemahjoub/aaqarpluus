@@ -24,7 +24,7 @@ const SignupSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    if (!checkRateLimit(`signup:${ip}`, 10, 300)) return badRequest("طلبات كثيرة، حاول لاحقاً");
+    if (!(await checkRateLimit(`signup:${ip}`, 10, 300))) return badRequest("طلبات كثيرة، حاول لاحقاً");
 
     const body = await req.json();
     const parsed = SignupSchema.safeParse(body);

@@ -12,7 +12,7 @@ function cookie(name: string, token: string, maxAgeSeconds: number) {
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    if (!checkRateLimit(`refresh:${ip}`, 30, 60)) return badRequest("طلبات كثيرة، حاول لاحقاً");
+    if (!(await checkRateLimit(`refresh:${ip}`, 30, 60))) return badRequest("طلبات كثيرة، حاول لاحقاً");
 
     const refresh = req.cookies.get(REFRESH_COOKIE)?.value;
     if (!refresh) return unauthorized();

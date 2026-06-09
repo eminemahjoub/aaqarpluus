@@ -21,7 +21,7 @@ const LoginSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    if (!checkRateLimit(`login:${ip}`, 10, 300)) return badRequest("محاولات كثيرة، حاول لاحقاً");
+    if (!(await checkRateLimit(`login:${ip}`, 10, 300))) return badRequest("محاولات كثيرة، حاول لاحقاً");
 
     const body = await req.json();
     const parsed = LoginSchema.safeParse({
