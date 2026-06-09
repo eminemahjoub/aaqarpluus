@@ -100,121 +100,131 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Attach active contract info per property
-    const propIds = properties.map((p: any) => p.id).filter(Boolean);
+    const propIds = properties.map((p: { id?: string }) => p.id).filter(Boolean);
     const today = new Date().toISOString().split("T")[0];
-
-    // Attach owner info (useful for agency view)
-    let ownerMap: Record<string, { full_name: string | null; phone: string | null }> = {};
-    const ownerIdsForMap = Array.from(new Set(properties.map((p: any) => String(p.owner_id)).filter(Boolean)));
-    if (ownerIdsForMap.length > 0) {
-      const owners = await ds.query(
-        `SELECT id, full_name, phone FROM users WHERE id = ANY($1)`,
-        [ownerIdsForMap]
-      );
-      for (const row of owners ?? []) {
-        if (row?.id) ownerMap[String(row.id)] = { full_name: row.full_name ? String(row.full_name) : null, phone: row.phone ? String(row.phone) : null };
-      }
-    }
-
-    let contractMap: Record<string, any> = {};
     const hidePii = ownerHidesTenantPii(user);
-    if (propIds.length > 0) {
-      const contracts = await ds
-        .getRepository("Contract")
-        .createQueryBuilder("c")
-        .leftJoinAndSelect("c.contact", "contact")
-        .leftJoinAndSelect("c.unit", "unit")
-        .where("c.property_id IN (:...propIds)", { propIds })
-        .andWhere("c.status = :status", { status: "active" })
-        .andWhere("c.start_date <= :today", { today })
-        .andWhere("c.end_date >= :today", { today })
-        .orderBy("c.start_date", "DESC")
-        .getMany();
 
-      const contractIds = contracts.map((c: { id?: string }) => String(c.id)).filter(Boolean);
-      const payMap = hidePii ? await paymentsByContractId(ds, contractIds) : {};
-
-      for (const c of contracts) {
-        const cc = c as {
-          property_id?: string;
-          end_date?: string;
-          start_date?: string;
-          unit?: { label?: string };
-          contact?: { name?: string; phone?: string };
-          id?: string;
-        };
-        const pid = cc.property_id;
-        if (!pid || contractMap[pid]) continue;
-        if (hidePii) {
-          contractMap[pid] = buildOwnerContractSummary({
-            end_date: cc.end_date,
-            start_date: cc.start_date,
-            unit_label: cc.unit?.label,
-            payments: payMap[String(cc.id)] ?? [],
-          });
-        } else {
-          contractMap[pid] = {
-            contact_name: cc.contact?.name ?? "—",
-            contact_phone: cc.contact?.phone ?? null,
-            unit_label: cc.unit?.label ?? "—",
-            start_date: cc.start_date ?? "—",
-            end_date: cc.end_date ?? "—",
-          };
+    // Parallelize independent enrichment lookups to eliminate N+1 sequential delay
+    const [ownerMap, contractMap, coverMap, officeMap] = await Promise.all([
+      // Owners
+      (async () => {
+        const map: Record<string, { full_name: string | null; phone: string | null }> = {};
+        const ownerIds = Array.from(new Set(properties.map((p: { owner_id?: string }) => String(p.owner_id)).filter(Boolean)));
+        if (ownerIds.length > 0) {
+          const rows = await ds.query(`SELECT id, full_name, phone FROM users WHERE id = ANY($1)`, [ownerIds]);
+          for (const row of rows ?? []) {
+            if (row?.id) map[String(row.id)] = { full_name: row.full_name ? String(row.full_name) : null, phone: row.phone ? String(row.phone) : null };
+          }
         }
-      }
-    }
+        return map;
+      })(),
 
-    // Fetch cover image per property for thumbnail (prefer image_type='cover', fallback to first)
-    let coverMap: Record<string, string> = {};
-    if (propIds.length > 0) {
-      const ownerIds = Array.from(new Set(properties.map((p: { owner_id?: string }) => String(p.owner_id)).filter(Boolean)));
-      const covers = await ds.query(
-        `SELECT DISTINCT ON (property_id) property_id, public_url
-         FROM property_images
-         WHERE property_id = ANY($1) AND owner_id = ANY($2)
-         ORDER BY property_id, (CASE WHEN image_type = 'cover' THEN 0 ELSE 1 END), created_at ASC`,
-        [propIds, ownerIds]
-      );
-      for (const row of covers) {
-        if (row.property_id) coverMap[String(row.property_id)] = String(row.public_url);
-      }
-    }
+      // Active contracts
+      (async () => {
+        const map: Record<string, unknown> = {};
+        if (propIds.length === 0) return map;
+        const contracts = await ds
+          .getRepository("Contract")
+          .createQueryBuilder("c")
+          .leftJoinAndSelect("c.contact", "contact")
+          .leftJoinAndSelect("c.unit", "unit")
+          .where("c.property_id IN (:...propIds)", { propIds })
+          .andWhere("c.status = :status", { status: "active" })
+          .andWhere("c.start_date <= :today", { today })
+          .andWhere("c.end_date >= :today", { today })
+          .orderBy("c.start_date", "DESC")
+          .getMany();
 
-    // Attach managing office info (useful for owner view)
-    let officeMap: Record<string, { name: string; phone: string | null; email: string | null }> = {};
-    const officeIdsForMap = Array.from(
-      new Set(properties.map((p: any) => (p.managing_office_id ? String(p.managing_office_id) : "")).filter(Boolean))
-    );
-    if (officeIdsForMap.length > 0) {
-      const offices = await ds.query(
-        `
-        SELECT
-          o.id AS office_id,
-          o.name AS office_name,
-          u.phone AS office_phone,
-          u.email AS office_email
-        FROM offices o
-        LEFT JOIN LATERAL (
-          SELECT uu.phone, uu.email
-          FROM users uu
-          WHERE uu.office_id = o.id AND uu.user_type = 'agency'
-          ORDER BY uu.created_at ASC
-          LIMIT 1
-        ) u ON TRUE
-        WHERE o.id = ANY($1)
-        `,
-        [officeIdsForMap]
-      );
-      for (const row of offices ?? []) {
-        if (!row?.office_id) continue;
-        officeMap[String(row.office_id)] = {
-          name: String(row.office_name ?? "—"),
-          phone: row.office_phone ? String(row.office_phone) : null,
-          email: row.office_email ? String(row.office_email) : null,
-        };
-      }
-    }
+        const contractIds = contracts.map((c: { id?: string }) => String(c.id)).filter(Boolean);
+        const payMap = hidePii ? await paymentsByContractId(ds, contractIds) : {};
+
+        for (const c of contracts) {
+          const cc = c as {
+            property_id?: string;
+            end_date?: string;
+            start_date?: string;
+            unit?: { label?: string };
+            contact?: { name?: string; phone?: string };
+            id?: string;
+          };
+          const pid = cc.property_id;
+          if (!pid || map[pid]) continue;
+          if (hidePii) {
+            map[pid] = buildOwnerContractSummary({
+              end_date: cc.end_date,
+              start_date: cc.start_date,
+              unit_label: cc.unit?.label,
+              payments: payMap[String(cc.id)] ?? [],
+            });
+          } else {
+            map[pid] = {
+              contact_name: cc.contact?.name ?? "—",
+              contact_phone: cc.contact?.phone ?? null,
+              unit_label: cc.unit?.label ?? "—",
+              start_date: cc.start_date ?? "—",
+              end_date: cc.end_date ?? "—",
+            };
+          }
+        }
+        return map;
+      })(),
+
+      // Cover images
+      (async () => {
+        const map: Record<string, string> = {};
+        if (propIds.length === 0) return map;
+        const ownerIds = Array.from(new Set(properties.map((p: { owner_id?: string }) => String(p.owner_id)).filter(Boolean)));
+        const covers = await ds.query(
+          `SELECT DISTINCT ON (property_id) property_id, public_url
+           FROM property_images
+           WHERE property_id = ANY($1) AND owner_id = ANY($2)
+           ORDER BY property_id, (CASE WHEN image_type = 'cover' THEN 0 ELSE 1 END), created_at ASC`,
+          [propIds, ownerIds]
+        );
+        for (const row of covers) {
+          if (row.property_id) map[String(row.property_id)] = String(row.public_url);
+        }
+        return map;
+      })(),
+
+      // Managing offices
+      (async () => {
+        const map: Record<string, { name: string; phone: string | null; email: string | null }> = {};
+        const officeIds = Array.from(
+          new Set(properties.map((p: { managing_office_id?: string }) => (p.managing_office_id ? String(p.managing_office_id) : "")).filter(Boolean))
+        );
+        if (officeIds.length > 0) {
+          const rows = await ds.query(
+            `
+            SELECT
+              o.id AS office_id,
+              o.name AS office_name,
+              u.phone AS office_phone,
+              u.email AS office_email
+            FROM offices o
+            LEFT JOIN LATERAL (
+              SELECT uu.phone, uu.email
+              FROM users uu
+              WHERE uu.office_id = o.id AND uu.user_type = 'agency'
+              ORDER BY uu.created_at ASC
+              LIMIT 1
+            ) u ON TRUE
+            WHERE o.id = ANY($1)
+            `,
+            [officeIds]
+          );
+          for (const row of rows ?? []) {
+            if (!row?.office_id) continue;
+            map[String(row.office_id)] = {
+              name: String(row.office_name ?? "—"),
+              phone: row.office_phone ? String(row.office_phone) : null,
+              email: row.office_email ? String(row.office_email) : null,
+            };
+          }
+        }
+        return map;
+      })(),
+    ]);
 
     const result = properties.map((p: any) => ({
       ...p,
