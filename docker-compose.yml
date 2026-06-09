@@ -35,6 +35,27 @@ services:
       - web_next_cache:/app/.next
     command: ["pnpm", "dev", "-H", "0.0.0.0", "-p", "2000"]
 
+  web-prod:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        CF_API_TOKEN: ${CF_API_TOKEN}
+        CF_ACCOUNT_ID: ${CF_ACCOUNT_ID}
+        JWT_SECRET: ${JWT_SECRET}
+        JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+    env_file:
+      - ./apps/web/.env.docker
+    ports:
+      - "2001:2000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # No volumes mount in prod; image is self-contained
+    profiles:
+      - prod
+
 volumes:
   pg_data:
   web_node_modules:

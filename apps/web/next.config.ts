@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: ".",
   },
+  output: "standalone",
   // Allow dev server WebSocket connections from production domain
   allowedDevOrigins: ['aaqarplus.tech', 'www.aaqarplus.tech'],
 };

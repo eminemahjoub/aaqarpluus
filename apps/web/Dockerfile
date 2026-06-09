@@ -1,15 +1,64 @@
-FROM node:20-alpine
+# -----------------------
+# Stage 1: Dependencies
+# -----------------------
+FROM node:20-alpine AS deps
 
 WORKDIR /app
-
-# pnpm via corepack
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
+# -----------------------
+# Stage 2: Builder
+# -----------------------
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+RUN corepack enable
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build-time env vars (required by config/env.js)
+ARG CF_API_TOKEN
+ARG CF_ACCOUNT_ID
+ARG JWT_SECRET
+ARG JWT_REFRESH_SECRET
+
+ENV CF_API_TOKEN=${CF_API_TOKEN}
+ENV CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+ENV JWT_SECRET=${JWT_SECRET}
+ENV JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+RUN pnpm build
+
+# -----------------------
+# Stage 3: Runner
+# -----------------------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy standalone output
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+USER nextjs
 
 EXPOSE 2000
 
-CMD ["pnpm", "dev", "-H", "0.0.0.0", "-p", "2000"]
+ENV PORT=2000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
