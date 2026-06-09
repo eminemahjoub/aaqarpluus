@@ -1,6 +1,5 @@
 import type { DataSource } from "typeorm";
 import { badRequest, forbidden } from "@/lib/errors";
-import { assertAgencyCanAccessProperty } from "@/lib/office-scope";
 
 export async function requireConversationParticipant(args: { ds: DataSource; userId: string; conversationId: string }) {
   const { ds, userId, conversationId } = args;
@@ -44,8 +43,20 @@ export async function getPropertyAccessOrThrow(args: {
   const { ds, user, propertyId } = args;
   const userType = String(user.userType ?? "");
   if (userType === "agency") {
-    const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
-    if (!can) throw forbidden("غير مصرح");
+    const agencyId = String(user.userId);
+    const officeId = user.officeId ? String(user.officeId) : null;
+    const propRow = await ds.query(
+      `SELECT owner_id, created_by_agency_id FROM properties WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [propertyId]
+    );
+    const p = propRow?.[0];
+    if (!p) throw forbidden("غير مصرح");
+    if (String(p.owner_id) === agencyId || String(p.created_by_agency_id) === agencyId) return;
+    const ownerCheck = await ds.query(
+      "SELECT 1 AS ok FROM users WHERE id = $1 AND created_by_agency_id = $2 AND deleted_at IS NULL LIMIT 1",
+      [String(p.owner_id), agencyId]
+    );
+    if (!ownerCheck?.[0]) throw forbidden("غير مصرح");
     return;
   }
   const prop = await ds.query(`SELECT id FROM properties WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL LIMIT 1`, [

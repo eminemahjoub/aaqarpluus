@@ -14,6 +14,8 @@ import {
   UserCircle,
   Phone,
   UserPlus,
+  User,
+  Zap,
   X,
   ChevronLeft,
   ChevronRight,
@@ -40,7 +42,9 @@ const ownerMenuItems = [
 
 const agencyMenuItems = [
   { href: "/agency", label: "المكتب", icon: LayoutDashboard },
+  { href: "/agency/automation", label: "الأتمتة", icon: Zap },
   { href: "/agency/owners", label: "الملاك", icon: Users },
+  { href: "/agency/renters", label: "المستأجرين", icon: User },
   { href: "/agency/members", label: "الموظفين", icon: UserPlus },
   { href: "/agency/properties", label: "العقارات", icon: Building2 },
   { href: "/agency/messages", label: "الرسائل", icon: MessageSquare },

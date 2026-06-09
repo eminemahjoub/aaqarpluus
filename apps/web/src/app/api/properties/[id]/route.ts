@@ -2,8 +2,32 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
-import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
+
+async function assertCanAccessProperty(ds: any, user: any, propertyId: string) {
+  const userType = String(user.userType ?? "");
+  const property = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+  if (!property) return false;
+  if (userType !== "agency") {
+    return String((property as any).owner_id) === String(user.userId);
+  }
+  const agencyId = String(user.userId);
+  const officeId = user.officeId ? String(user.officeId) : null;
+  if (officeId) {
+    const linked = await ds.query(
+      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
+      [officeId, propertyId]
+    );
+    if (Array.isArray(linked) && linked.length > 0) return true;
+  }
+  if (String((property as any).owner_id) === agencyId) return true;
+  if (String((property as any).created_by_agency_id) === agencyId) return true;
+  const rows = await ds.query(
+    "SELECT 1 AS ok FROM users WHERE id = $1 AND created_by_agency_id = $2 AND deleted_at IS NULL LIMIT 1",
+    [(property as any).owner_id, agencyId]
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,13 +36,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const ds = await getDataSource();
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const property = Array.isArray(propertyIds)
-      ? await ds.getRepository("Property").findOne({ where: { id } as any })
-      : await ds.getRepository("Property").findOne({ where: { id, owner_id: user.userId } as any });
-
+    const property = await ds.getRepository("Property").findOne({ where: { id } as any });
     if (!property) return unauthorized();
-    if (Array.isArray(propertyIds) && !(await assertAgencyCanAccessProperty(ds, user, id))) return unauthorized();
+    if (!(await assertCanAccessProperty(ds, user, id))) return unauthorized();
 
     // Load units for this property
     const units = await ds
@@ -92,12 +112,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
 
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const property = Array.isArray(propertyIds)
-      ? await repo.findOne({ where: { id } as any })
-      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const property = await repo.findOne({ where: { id } as any });
     if (!property) return unauthorized();
-    if (Array.isArray(propertyIds) && !(await assertAgencyCanAccessProperty(ds, user, id))) return unauthorized();
+    if (!(await assertCanAccessProperty(ds, user, id))) return unauthorized();
 
     const updates: Record<string, any> = {};
     const fields = [
@@ -185,12 +202,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
 
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const property = Array.isArray(propertyIds)
-      ? await repo.findOne({ where: { id } as any })
-      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const property = await repo.findOne({ where: { id } as any });
     if (!property) return unauthorized();
-    if (Array.isArray(propertyIds) && !(await assertAgencyCanAccessProperty(ds, user, id))) return unauthorized();
+    if (!(await assertCanAccessProperty(ds, user, id))) return unauthorized();
 
     // Delete in proper order using raw SQL to avoid FK violations
     await ds.query(`DELETE FROM contract_payments WHERE contract_id IN (SELECT id FROM contracts WHERE property_id = $1)`, [id]);

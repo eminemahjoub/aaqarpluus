@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
-import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { z } from "zod";
 import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
 import { parsePagination, paginated } from "@/lib/pagination";
@@ -22,26 +21,68 @@ export async function GET(req: NextRequest) {
     const page = parsePagination(searchParams);
     const search = page?.search ?? null;
 
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const userType = String(user.userType ?? "");
     let properties: any[] = [];
-    if (Array.isArray(propertyIds)) {
-      if (propertyIds.length === 0) return ok(page ? paginated({ items: [], total: 0, page: page.page, limit: page.limit, search }) : []);
-      let qb = ds
-        .getRepository("Property")
-        .createQueryBuilder("p")
-        .where("p.id IN (:...propertyIds)", { propertyIds })
-        .andWhere("p.deleted_at IS NULL")
-        .orderBy("p.created_at", "DESC");
-      if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
-      if (!page) {
-        properties = await qb.getMany();
+
+    if (userType === "agency") {
+      const officeId = user.officeId ? String(user.officeId) : null;
+      const agencyId = String(user.userId);
+      if (!officeId) {
+        // Agency without office: fetch properties created by this agency,
+        // owned directly by the agency, or whose owner was created by this agency
+        let qb = ds
+          .getRepository("Property")
+          .createQueryBuilder("p")
+          .where(
+            `(p.created_by_agency_id = :agencyId
+             OR p.owner_id = :agencyId
+             OR EXISTS (
+               SELECT 1 FROM users u
+               WHERE u.id = p.owner_id
+                 AND u.created_by_agency_id = :agencyId
+                 AND u.deleted_at IS NULL
+             ))`,
+            { agencyId }
+          )
+          .andWhere("p.deleted_at IS NULL")
+          .orderBy("p.created_at", "DESC");
+        if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
+        if (!page) {
+          properties = await qb.getMany();
+        } else {
+          const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
+          properties = items;
+          Object.defineProperty(properties, "__pagination", { value: { total, page: page.page, limit: page.limit, search }, enumerable: false });
+        }
       } else {
-        const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
-        properties = items;
-        // We'll return paginated wrapper at the end.
-        Object.defineProperty(properties, "__pagination", { value: { total, page: page.page, limit: page.limit, search }, enumerable: false });
+        // Agency with office: same logic — query by agency ownership
+        let qb = ds
+          .getRepository("Property")
+          .createQueryBuilder("p")
+          .where(
+            `(p.created_by_agency_id = :agencyId
+             OR p.owner_id = :agencyId
+             OR EXISTS (
+               SELECT 1 FROM users u
+               WHERE u.id = p.owner_id
+                 AND u.created_by_agency_id = :agencyId
+                 AND u.deleted_at IS NULL
+             ))`,
+            { agencyId }
+          )
+          .andWhere("p.deleted_at IS NULL")
+          .orderBy("p.created_at", "DESC");
+        if (search) qb = qb.andWhere("(p.name ILIKE :q OR p.city ILIKE :q OR p.neighborhood ILIKE :q)", { q: `%${search}%` });
+        if (!page) {
+          properties = await qb.getMany();
+        } else {
+          const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
+          properties = items;
+          Object.defineProperty(properties, "__pagination", { value: { total, page: page.page, limit: page.limit, search }, enumerable: false });
+        }
       }
     } else {
+      // Owner path
       let qb = ds
         .getRepository("Property")
         .createQueryBuilder("p")
@@ -217,14 +258,22 @@ const CreatePropertySchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
+    console.log("[properties POST] user:", user?.userId, user?.userType, user?.officeId);
     if (!user) return unauthorized();
     const readOnly = denyIfOwnerCannotMutateProperties(user);
     if (readOnly) return readOnly;
 
     const body = await req.json();
+    console.log("[properties POST] body keys:", Object.keys(body));
     const parsed = CreatePropertySchema.safeParse(body);
-    if (!parsed.success) return badRequest(badZod(parsed.error));
-    if (!parsed.data.name?.trim()) return badRequest("اسم العقار مطلوب");
+    if (!parsed.success) {
+      console.error("[properties POST] zod error:", parsed.error.issues);
+      return badRequest(badZod(parsed.error));
+    }
+    if (!parsed.data.name?.trim()) {
+      console.error("[properties POST] missing name");
+      return badRequest("اسم العقار مطلوب");
+    }
 
     const isUuid = (v: string) =>
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -251,22 +300,42 @@ export async function POST(req: NextRequest) {
     // Agency can create a property for a linked owner, and auto-assign itself to manage it.
     if (userType === "agency") {
       const officeId = user.officeId ? String(user.officeId) : null;
-      if (!officeId) return badRequest("office_id غير موجود");
+      const agencyId = String(user.userId);
 
       const ownerIdRaw = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
-      if (!ownerIdRaw || !isUuid(ownerIdRaw)) return badRequest("يرجى اختيار المالك");
+      let ownerId: string | null = null;
 
-      const linked = await ds.query(
-        "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
-        [officeId, ownerIdRaw]
-      );
-      if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      if (ownerIdRaw && isUuid(ownerIdRaw)) {
+        if (officeId) {
+          const linked = await ds.query(
+            "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
+            [officeId, ownerIdRaw]
+          );
+          if (!Array.isArray(linked) || linked.length === 0) {
+            console.error("[properties POST] owner not linked:", ownerIdRaw);
+            return badRequest("المالك غير مرتبط بهذا المكتب");
+          }
+        } else {
+          const owner = await ds
+            .getRepository("User")
+            .findOne({ where: { id: ownerIdRaw, created_by_agency_id: agencyId } as any });
+          if (!owner) {
+            console.error("[properties POST] owner not found:", ownerIdRaw, "agency:", agencyId);
+            return badRequest("المالك غير موجود");
+          }
+        }
+        ownerId = ownerIdRaw;
+      }
 
-      if (commissionPercentRaw === null) return badRequest("نسبة العمولة مطلوبة");
+      if (officeId && commissionPercentRaw === null) {
+        console.error("[properties POST] commission required for office");
+        return badRequest("نسبة العمولة مطلوبة");
+      }
 
       const property = repo.create({
-        owner_id: ownerIdRaw,
+        owner_id: ownerId ?? agencyId,
         managing_office_id: officeId,
+        created_by_agency_id: agencyId,
         name: body.name.trim(),
         title: body.title?.trim() || null,
         status: body.status ?? "vacant",
@@ -296,14 +365,19 @@ export async function POST(req: NextRequest) {
 
       await repo.save(property);
 
-      await ds.query(
-        `
-        INSERT INTO office_property_links (office_id, owner_id, property_id, commission_percent, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT DO NOTHING
-        `,
-        [officeId, ownerIdRaw, String((property as any).id), commissionPercentRaw]
-      );
+      if (officeId) {
+        const linkOwnerId = ownerId ?? agencyId;
+        await ds.query(
+          `
+          INSERT INTO office_property_links (office_id, owner_id, property_id, commission_percent, created_at)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT DO NOTHING
+          `,
+          [officeId, linkOwnerId, String((property as any).id), commissionPercentRaw]
+        );
+      }
+
+      await generateUnits(ds, property as any, body);
 
       return created(property);
     }
@@ -363,8 +437,67 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await generateUnits(ds, property as any, body);
+
     return created(property);
   } catch (err) {
     return serverError(err);
+  }
+}
+
+async function generateUnits(ds: any, property: any, body: any) {
+  const propertyId = String(property.id);
+  const ownerId = String(property.owner_id);
+  const unitRepo = ds.getRepository("Unit");
+
+  const apartmentsCount = Number(body.apartments_count ?? 0);
+  const shopsCount = Number(body.shops_count ?? 0);
+  const othersCount = Number(body.other_units_count ?? 0);
+
+  if (apartmentsCount + shopsCount + othersCount === 0) return;
+
+  const units: any[] = [];
+
+  // Apartments
+  for (let i = 1; i <= apartmentsCount; i++) {
+    units.push(
+      unitRepo.create({
+        property_id: propertyId,
+        owner_id: ownerId,
+        label: `شقة ${i}`,
+        unit_type: "apartment",
+        status: "vacant",
+      } as any)
+    );
+  }
+
+  // Shops
+  for (let i = 1; i <= shopsCount; i++) {
+    units.push(
+      unitRepo.create({
+        property_id: propertyId,
+        owner_id: ownerId,
+        label: `محل ${i}`,
+        unit_type: "shop",
+        status: "vacant",
+      } as any)
+    );
+  }
+
+  // Other units
+  for (let i = 1; i <= othersCount; i++) {
+    units.push(
+      unitRepo.create({
+        property_id: propertyId,
+        owner_id: ownerId,
+        label: `وحدة ${i}`,
+        unit_type: "other",
+        status: "vacant",
+      } as any)
+    );
+  }
+
+  if (units.length > 0) {
+    await unitRepo.save(units);
   }
 }

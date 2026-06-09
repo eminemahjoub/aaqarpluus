@@ -2,12 +2,30 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { expandOccurrencesInRange } from "@/lib/recurring-tasks";
-import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
 
 type CacheEntry = { expiresAt: number; value: any };
 const STATS_CACHE = new Map<string, CacheEntry>();
 const TTL_MS = 5 * 60_000;
+
+async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
+  const userType = String(user.userType ?? "");
+  if (userType !== "agency") return null;
+  const agencyId = String(user.userId);
+  const rows = await ds.query(
+    `SELECT id FROM properties
+     WHERE deleted_at IS NULL
+       AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = owner_id
+           AND u.created_by_agency_id = $1
+           AND u.deleted_at IS NULL
+       ))`,
+    [agencyId]
+  );
+  const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
+  return ids.length > 0 ? ids : [];
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,6 +55,7 @@ export async function GET(req: NextRequest) {
         occupiedUnits: 0,
         totalContracts: 0,
         activeContracts: 0,
+        totalCommissionSar: 0,
         pendingPayments: [],
         monthPayments: [],
         calendarData: { tasks: [], revenues: [], expenses: [], contracts: [], monthPayments: [] },
@@ -59,7 +78,8 @@ export async function GET(req: NextRequest) {
         TO_CHAR(DATE_TRUNC('month', r.received_at), 'YYYY-MM-01') AS month,
         COALESCE(SUM(r.amount_sar), 0) AS income_sar,
         0 AS expenses_sar,
-        COALESCE(SUM(r.amount_sar), 0) AS net_sar
+        COALESCE(SUM(r.amount_sar), 0) AS net_sar,
+        0 AS commission_sar
       FROM revenues r
       WHERE r.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM r.received_at) = $2
@@ -70,10 +90,25 @@ export async function GET(req: NextRequest) {
         TO_CHAR(DATE_TRUNC('month', e.paid_at), 'YYYY-MM-01') AS month,
         0 AS income_sar,
         COALESCE(SUM(e.amount_sar), 0) AS expenses_sar,
-        -COALESCE(SUM(e.amount_sar), 0) AS net_sar
+        -COALESCE(SUM(e.amount_sar), 0) AS net_sar,
+        0 AS commission_sar
       FROM expenses e
       WHERE e.owner_id = ANY($1)
         AND EXTRACT(YEAR FROM e.paid_at) = $2
+        AND e.type != 'عمولة مكتب'
+        ${expensePropertyFilterSql}
+      GROUP BY DATE_TRUNC('month', e.paid_at)
+      UNION ALL
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', e.paid_at), 'YYYY-MM-01') AS month,
+        0 AS income_sar,
+        0 AS expenses_sar,
+        -COALESCE(SUM(e.amount_sar), 0) AS net_sar,
+        COALESCE(SUM(e.amount_sar), 0) AS commission_sar
+      FROM expenses e
+      WHERE e.owner_id = ANY($1)
+        AND EXTRACT(YEAR FROM e.paid_at) = $2
+        AND e.type = 'عمولة مكتب'
         ${expensePropertyFilterSql}
       GROUP BY DATE_TRUNC('month', e.paid_at)
       `,
@@ -81,13 +116,14 @@ export async function GET(req: NextRequest) {
     );
 
     // Aggregate by month
-    const monthMap: Record<string, { income_sar: number; expenses_sar: number; net_sar: number }> = {};
+    const monthMap: Record<string, { income_sar: number; expenses_sar: number; net_sar: number; commission_sar: number }> = {};
     for (const row of monthlyRaw) {
       const m = String(row.month).slice(0, 10);
-      if (!monthMap[m]) monthMap[m] = { income_sar: 0, expenses_sar: 0, net_sar: 0 };
+      if (!monthMap[m]) monthMap[m] = { income_sar: 0, expenses_sar: 0, net_sar: 0, commission_sar: 0 };
       monthMap[m].income_sar += Number(row.income_sar) || 0;
       monthMap[m].expenses_sar += Number(row.expenses_sar) || 0;
       monthMap[m].net_sar += Number(row.net_sar) || 0;
+      monthMap[m].commission_sar += Number(row.commission_sar) || 0;
     }
     const monthly = Object.entries(monthMap).map(([month, v]) => ({ month, ...v }));
 
@@ -259,12 +295,15 @@ export async function GET(req: NextRequest) {
         )
       : [];
 
+    const totalCommissionSar = monthly.reduce((a: number, r: any) => a + (Number(r.commission_sar) || 0), 0);
+
     const value = {
       monthly,
       totalUnits,
       occupiedUnits,
       totalContracts,
       activeContracts,
+      totalCommissionSar,
       pendingPayments: pendingPayments.map((r: any) => {
         if (!hidePii) {
           return { ...r, tenantName: contactMap[r.contact_id] ?? "—" };

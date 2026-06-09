@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, ok, created, badRequest, unauthorized } from "@/lib/api-helpers";
-import { getAccessiblePropertyIds } from "@/lib/office-scope";
 import { handleError, unauthorized as throwUnauthorized } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
 import { ownerHidesTenantPii, sanitizeContactForOwner } from "@/lib/owner-tenant-privacy";
@@ -17,13 +16,12 @@ export async function GET(req: NextRequest) {
     const search = page?.search ?? (searchParams.get("q")?.trim() ? searchParams.get("q")!.trim() : null);
 
     const ds = await getDataSource();
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const userType = String(user.userType ?? "");
 
-    // For agencies: only contacts linked to contracts on accessible properties.
-    if (Array.isArray(propertyIds)) {
-      if (propertyIds.length === 0) return ok(page ? paginated({ items: [], total: 0, page: page.page, limit: page.limit, search }) : []);
-
-      const params: any[] = [propertyIds];
+    // For agencies: contacts where owner_id is the agency or an owner created by the agency.
+    if (userType === "agency") {
+      const agencyId = String(user.userId);
+      const params: any[] = [agencyId];
       let idx = 2;
       let where = "";
       if (type) {
@@ -36,40 +34,38 @@ export async function GET(req: NextRequest) {
         idx++;
       }
 
+      const baseQuery = `
+        SELECT c.* FROM contacts c
+        WHERE c.deleted_at IS NULL
+          AND (c.owner_id = $1 OR EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = c.owner_id
+              AND u.created_by_agency_id = $1
+              AND u.deleted_at IS NULL
+          )) ${where}
+        ORDER BY c.created_at DESC`;
+
       if (!page) {
-        const rows = await ds.query(
-          `SELECT DISTINCT c.*
-           FROM contacts c
-           JOIN contracts ct ON ct.contact_id = c.id
-           WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}
-           ORDER BY c.created_at DESC`,
-          params
-        );
+        const rows = await ds.query(baseQuery, params);
         const items = (rows ?? []).map((r: Record<string, unknown>) =>
           ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
         );
         return ok(items);
       }
 
-      const totalRows = await ds.query(
-        `SELECT COUNT(DISTINCT c.id)::int AS total
-         FROM contacts c
-         JOIN contracts ct ON ct.contact_id = c.id
-         WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}`,
-        params
-      );
+      const countQuery = `SELECT COUNT(*)::int AS total FROM contacts c
+        WHERE c.deleted_at IS NULL
+          AND (c.owner_id = $1 OR EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = c.owner_id
+              AND u.created_by_agency_id = $1
+              AND u.deleted_at IS NULL
+          )) ${where}`;
+      const totalRows = await ds.query(countQuery, params);
       const total = Number(totalRows?.[0]?.total ?? 0) || 0;
 
       params.push(page.limit, page.offset);
-      const rows = await ds.query(
-        `SELECT DISTINCT c.*
-         FROM contacts c
-         JOIN contracts ct ON ct.contact_id = c.id
-         WHERE ct.property_id = ANY($1) AND c.deleted_at IS NULL ${where}
-         ORDER BY c.created_at DESC
-         LIMIT $${idx++} OFFSET $${idx++}`,
-        params
-      );
+      const rows = await ds.query(baseQuery + ` LIMIT $${idx++} OFFSET $${idx++}`, params);
       const agencyItems = (rows ?? []).map((r: Record<string, unknown>) =>
         ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
       );
@@ -122,17 +118,27 @@ export async function POST(req: NextRequest) {
     const ds = await getDataSource();
     const repo = ds.getRepository("Contact");
     let ownerId = String(user.userId);
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    if (Array.isArray(propertyIds)) {
+    const userType = String(user.userType ?? "");
+    if (userType === "agency") {
       const ownerIdRaw = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
       if (!ownerIdRaw) return badRequest("معرّف المالك مطلوب");
       const officeId = user.officeId ? String(user.officeId) : null;
-      if (!officeId) return badRequest("office_id غير موجود");
-      const linked = await ds.query(
-        "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
-        [officeId, ownerIdRaw]
-      );
-      if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      if (officeId) {
+        const linked = await ds.query(
+          "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
+          [officeId, ownerIdRaw]
+        );
+        if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      } else {
+        // Agency without office: verify owner was created by this agency
+        const ownerRow = await ds.query(
+          `SELECT 1 AS ok FROM users u
+           WHERE u.id = $1 AND u.created_by_agency_id = $2 AND u.deleted_at IS NULL
+           LIMIT 1`,
+          [ownerIdRaw, user.userId]
+        );
+        if (!Array.isArray(ownerRow) || ownerRow.length === 0) return unauthorized();
+      }
       ownerId = ownerIdRaw;
     }
 

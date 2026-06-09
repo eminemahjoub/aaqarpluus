@@ -3,9 +3,54 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 import { UuidSchema, badZod } from "@/lib/validation";
 import { z } from "zod";
+
+async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
+  const userType = String(user.userType ?? "");
+  if (userType !== "agency") return null;
+  const agencyId = String(user.userId);
+  const rows = await ds.query(
+    `SELECT id FROM properties
+     WHERE deleted_at IS NULL
+       AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = owner_id
+           AND u.created_by_agency_id = $1
+           AND u.deleted_at IS NULL
+       ))`,
+    [agencyId]
+  );
+  const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
+  return ids.length > 0 ? ids : [];
+}
+
+async function assertCanAccessProperty(ds: any, user: any, propertyId: string) {
+  const userType = String(user.userType ?? "");
+  if (userType !== "agency") return true;
+  const agencyId = String(user.userId);
+  const officeId = user.officeId ? String(user.officeId) : null;
+  if (officeId) {
+    const linked = await ds.query(
+      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
+      [officeId, propertyId]
+    );
+    if (Array.isArray(linked) && linked.length > 0) return true;
+  }
+  const rows = await ds.query(
+    `SELECT 1 AS ok FROM properties p
+     WHERE p.id = $1 AND p.deleted_at IS NULL
+       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = p.owner_id
+           AND u.created_by_agency_id = $2
+           AND u.deleted_at IS NULL
+       ))
+     LIMIT 1`,
+    [propertyId, agencyId]
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
 
 const UploadMetaSchema = z.object({
   property_id: UuidSchema,
@@ -71,7 +116,7 @@ export async function POST(req: NextRequest) {
     if (!metaParsed.success) return badRequest(badZod(metaParsed.error));
 
     const pid = String(metaParsed.data.property_id);
-    const can = await assertAgencyCanAccessProperty(ds, user, pid);
+    const can = await assertCanAccessProperty(ds, user, pid);
     if (!can) return unauthorized();
     const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
     if (!prop) return badRequest("العقار غير موجود");

@@ -1,7 +1,40 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
+
+async function assertCanAccessTask(ds: any, user: any, taskId: string) {
+  const userType = String(user.userType ?? "");
+  const repo = ds.getRepository("Task");
+  const task = await repo.findOne({ where: { id: taskId } as any });
+  if (!task) return false;
+  if (userType !== "agency") {
+    return String((task as any).owner_id) === String(user.userId);
+  }
+  const agencyId = String(user.userId);
+  const officeId = user.officeId ? String(user.officeId) : null;
+  const pid = String((task as any).property_id ?? "");
+  if (!pid) return false;
+  if (officeId) {
+    const linked = await ds.query(
+      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
+      [officeId, pid]
+    );
+    if (Array.isArray(linked) && linked.length > 0) return true;
+  }
+  const rows = await ds.query(
+    `SELECT 1 AS ok FROM properties p
+     WHERE p.id = $1 AND p.deleted_at IS NULL
+       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = p.owner_id
+           AND u.created_by_agency_id = $2
+           AND u.deleted_at IS NULL
+       ))
+     LIMIT 1`,
+    [pid, agencyId]
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,15 +46,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const task = Array.isArray(propertyIds)
-      ? await repo.findOne({ where: { id } as any })
-      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const task = await repo.findOne({ where: { id } as any });
     if (!task) return unauthorized();
-    if (Array.isArray(propertyIds)) {
-      const pid = String((task as any).property_id ?? "");
-      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
-    }
+    if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
 
     const updates: Record<string, any> = {};
     const fields = [
@@ -67,15 +94,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const task = Array.isArray(propertyIds)
-      ? await repo.findOne({ where: { id } as any })
-      : await repo.findOne({ where: { id, owner_id: user.userId } as any });
+    const task = await repo.findOne({ where: { id } as any });
     if (!task) return unauthorized();
-    if (Array.isArray(propertyIds)) {
-      const pid = String((task as any).property_id ?? "");
-      if (!pid || !(await assertAgencyCanAccessProperty(ds, user, pid))) return unauthorized();
-    }
+    if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
 
     await repo.delete(id);
     return ok({ success: true });

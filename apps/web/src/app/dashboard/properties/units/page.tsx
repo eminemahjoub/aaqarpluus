@@ -456,12 +456,19 @@ export default function UnitsBuilderPage() {
 
     async function load() {
       setLoading(true);
-      const [propRes, unitsRes, contactsRes, contractsRes] = await Promise.all([
-        authFetch(`/api/properties/${propertyId}`),
-        authFetch(`/api/units?property_id=${propertyId}`),
-        authFetch("/api/contacts"),
-        authFetch(`/api/contracts?property_id=${propertyId}`),
-      ]);
+      let propRes: Response, unitsRes: Response, contactsRes: Response, contractsRes: Response;
+      try {
+        [propRes, unitsRes, contactsRes, contractsRes] = await Promise.all([
+          authFetch(`/api/properties/${propertyId}`),
+          authFetch(`/api/units?property_id=${propertyId}`),
+          authFetch("/api/contacts"),
+          authFetch(`/api/contracts?property_id=${propertyId}`),
+        ]);
+      } catch (e) {
+        console.error("[units] fetch error", e);
+        if (!cancelled) setLoading(false);
+        return;
+      }
       if (cancelled) return;
       const [propData, dbUnits, contactsRaw, contractsRaw] = await Promise.all([
         propRes.ok ? propRes.json() : null,
@@ -511,6 +518,7 @@ export default function UnitsBuilderPage() {
       // Auto-generate units if none exist yet
       if ((!dbUnits || dbUnits.length === 0) && prop && prop.units_count > 0) {
         const count = Math.max(0, Math.min(200, Number(prop.units_count)));
+        console.log(`[units] auto-generating ${count} units for property ${propertyId}`);
         const generatedUnits = Array.from({ length: count }, (_, idx) => {
           const n = idx + 1;
           const unitType = inferUnitTypeByIndex(prop, idx);
@@ -523,18 +531,34 @@ export default function UnitsBuilderPage() {
           };
         });
         // Create units via API
-        const createdUnits = await Promise.all(
-          generatedUnits.map((row) =>
-            authFetch("/api/units", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(row),
-            }).then((r) => r.ok ? r.json() : null)
-          )
-        );
+        let createdResponses: (any | null)[];
+        try {
+          createdResponses = await Promise.all(
+            generatedUnits.map((row) =>
+              authFetch("/api/units", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(row),
+              }).then(async (r) => {
+                if (!r.ok) {
+                  const errBody = await r.json().catch(() => null);
+                  console.error(`[units] POST failed status=${r.status}`, errBody, row);
+                  return null;
+                }
+                return r.json();
+              })
+            )
+          );
+        } catch (e) {
+          console.error("[units] auto-generation network error", e);
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const succeeded = createdResponses.filter(Boolean);
+        console.log(`[units] created ${succeeded.length}/${generatedUnits.length} units`);
         if (!cancelled) {
           setUnits(
-            createdUnits.filter(Boolean).map((u: any, idx: number) => {
+            succeeded.map((u: any, idx: number) => {
               const unitType: UnitType =
                 u.unit_type === "shop" || u.unit_type === "other" || u.unit_type === "apartment"
                   ? (u.unit_type as UnitType)

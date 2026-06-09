@@ -2,26 +2,38 @@
 
 import * as React from "react";
 import { authFetch } from "@/lib/auth-fetch";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onSyncEvent, broadcastSync } from "@/lib/sync-engine";
+
+type MemberRow = { id: string; email: string; full_name: string | null; phone: string | null; created_at: string | null };
 
 export default function AgencyMembersPage() {
-  const [loading, setLoading] = React.useState(true);
-  const [rows, setRows] = React.useState<Array<{ id: string; email: string; full_name: string | null; phone: string | null; created_at: string | null }>>([]);
+  const qc = useQueryClient();
   const [form, setForm] = React.useState({ email: "", password: "", fullName: "", phone: "" });
   const [error, setError] = React.useState<string | null>(null);
+  const [syncTick, setSyncTick] = React.useState(0);
 
-  async function refresh() {
-    setLoading(true);
-    try {
+  const membersQuery = useQuery({
+    queryKey: ["agency", "members", syncTick],
+    queryFn: async () => {
       const res = await authFetch("/api/offices/members");
-      const data = res.ok ? await res.json() : [];
-      setRows(Array.isArray(data) ? data : []);
-    } finally {
-      setLoading(false);
-    }
-  }
+      if (!res.ok) throw new Error("فشل تحميل الموظفين");
+      const data = await res.json();
+      return Array.isArray(data) ? (data as MemberRow[]) : [];
+    },
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+    staleTime: 10000,
+  });
 
+  // Cross-tab sync
   React.useEffect(() => {
-    void refresh();
+    const unsub = onSyncEvent((payload) => {
+      if (payload.event === "members:mutated" || payload.event === "any:mutated") {
+        setSyncTick((t) => t + 1);
+      }
+    });
+    return () => { unsub(); };
   }, []);
 
   return (
@@ -88,7 +100,8 @@ export default function AgencyMembersPage() {
                   return;
                 }
                 setForm({ email: "", password: "", fullName: "", phone: "" });
-                await refresh();
+                await qc.invalidateQueries({ queryKey: ["agency", "members"] });
+                broadcastSync("members:mutated");
               })();
             }}
             className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
@@ -103,9 +116,9 @@ export default function AgencyMembersPage() {
         <div className="border-b border-gray-100 p-4 dark:border-emerald-800/30">
           <h2 className="font-semibold text-gray-900 dark:text-white">قائمة الموظفين</h2>
         </div>
-        {loading ? (
+        {membersQuery.isLoading ? (
           <div className="p-6 text-sm text-gray-500 dark:text-gray-400">جاري التحميل...</div>
-        ) : rows.length === 0 ? (
+        ) : (membersQuery.data ?? []).length === 0 ? (
           <div className="p-6 text-sm text-gray-500 dark:text-gray-400">لا يوجد موظفون.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -118,7 +131,7 @@ export default function AgencyMembersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
-                {rows.map((r) => (
+                {(membersQuery.data ?? []).map((r: MemberRow) => (
                   <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
                     <td className="px-4 py-3 text-gray-900 dark:text-white">{r.full_name ?? "—"}</td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{r.email}</td>

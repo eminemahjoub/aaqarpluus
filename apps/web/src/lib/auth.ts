@@ -1,12 +1,13 @@
 import { SignJWT, jwtVerify } from "jose";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "aaqarplus-dev-secret-change-in-production"
-);
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
 
-const JWT_REFRESH_SECRET = new TextEncoder().encode(
-  process.env.JWT_REFRESH_SECRET ?? "aaqarplus-dev-refresh-secret-change-in-production"
-);
+const JWT_SECRET = new TextEncoder().encode(requireEnv("JWT_SECRET"));
+const JWT_REFRESH_SECRET = new TextEncoder().encode(requireEnv("JWT_REFRESH_SECRET"));
 
 // Cookies
 const TOKEN_COOKIE = "aaqar_token"; // access token

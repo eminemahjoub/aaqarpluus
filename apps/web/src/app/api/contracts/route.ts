@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotManageTenantContracts } from "@/lib/mutate-guard";
-import { assertAgencyCanAccessProperty, getAccessiblePropertyIds } from "@/lib/office-scope";
 import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
+import { generatePaymentSchedule } from "@/lib/auto-payments";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const contactId = searchParams.get("contact_id");
 
     const ds = await getDataSource();
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const userType = String(user.userType ?? "");
     let qb = ds
       .getRepository("Contract")
       .createQueryBuilder("c")
@@ -28,7 +28,20 @@ export async function GET(req: NextRequest) {
       .leftJoinAndSelect("c.property", "property")
       .orderBy("c.start_date", "DESC");
 
-    if (Array.isArray(propertyIds)) {
+    if (userType === "agency") {
+      const agencyId = String(user.userId);
+      const propRows = await ds.query(
+        `SELECT id FROM properties
+         WHERE deleted_at IS NULL
+           AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
+             SELECT 1 FROM users u
+             WHERE u.id = owner_id
+               AND u.created_by_agency_id = $1
+               AND u.deleted_at IS NULL
+           ))`,
+        [agencyId]
+      );
+      const propertyIds = Array.from(new Set((propRows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
       if (propertyIds.length === 0) return ok([]);
       qb = qb.where("c.property_id IN (:...propertyIds)", { propertyIds });
     } else {
@@ -68,11 +81,38 @@ export async function POST(req: NextRequest) {
     const repo = ds.getRepository("Contract");
     const propertyId = body.property_id ? String(body.property_id) : null;
     if (!propertyId) return badRequest("معرف العقار مطلوب");
-    const can = await assertAgencyCanAccessProperty(ds, user, propertyId);
-    if (!can) return unauthorized();
 
     const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
     if (!prop) return badRequest("العقار غير موجود");
+
+    // Verify agency can access this property
+    const userType = String(user.userType ?? "");
+    if (userType === "agency") {
+      const agencyId = String(user.userId);
+      const officeId = user.officeId ? String(user.officeId) : null;
+      if (officeId) {
+        const linked = await ds.query(
+          "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
+          [officeId, propertyId]
+        );
+        if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      } else {
+        const okRow = await ds.query(
+          `SELECT 1 AS ok FROM properties p
+           WHERE p.id = $1 AND p.deleted_at IS NULL
+             AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
+               SELECT 1 FROM users u
+               WHERE u.id = p.owner_id
+                 AND u.created_by_agency_id = $2
+                 AND u.deleted_at IS NULL
+             ))
+           LIMIT 1`,
+          [propertyId, agencyId]
+        );
+        if (!Array.isArray(okRow) || okRow.length === 0) return unauthorized();
+      }
+    }
+
     const ownerId = String((prop as any).owner_id);
 
     // Accept aliases: rent_amount/rent_total → rent_total_sar, payment_period/payment_frequency → payment_frequency
@@ -114,8 +154,24 @@ export async function POST(req: NextRequest) {
       await ds.query("UPDATE properties SET status = 'active' WHERE id = $1", [body.property_id]);
     }
 
-    // Save payment schedule if provided
-    const payments = Array.isArray(body.payments) ? body.payments : [];
+    // Build payment schedule: explicit payments take priority, else auto-generate from contract terms
+    let payments = Array.isArray(body.payments) ? body.payments : [];
+    if (payments.length === 0) {
+      const rentTotal = (contract as any).rent_total_sar ? Number((contract as any).rent_total_sar) : null;
+      const startDate = (contract as any).start_date;
+      const endDate = (contract as any).end_date;
+      const freq = (contract as any).payment_frequency;
+      const instCount = (contract as any).installments_count;
+      if (rentTotal && startDate && endDate && (freq || instCount)) {
+        payments = generatePaymentSchedule({
+          rent_total_sar: rentTotal,
+          start_date: startDate,
+          end_date: endDate,
+          payment_frequency: freq,
+          installments_count: instCount,
+        });
+      }
+    }
     if (payments.length > 0) {
       const payRepo = ds.getRepository("ContractPayment");
       for (const p of payments) {

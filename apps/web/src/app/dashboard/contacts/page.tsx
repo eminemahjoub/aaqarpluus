@@ -7,6 +7,7 @@ import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
 import { ErrorState, PageLoading } from "@/components/ui/states";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { onSyncEvent, broadcastSync } from "@/lib/sync-engine";
 
 type ContactRow = {
   id: string;
@@ -52,7 +53,20 @@ export function ContactsContent() {
       const data = await res.json();
       return Array.isArray(data) ? (data as ContactRow[]) : [];
     },
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+    staleTime: 10000,
   });
+
+  // Cross-tab sync
+  React.useEffect(() => {
+    const unsub = onSyncEvent((payload) => {
+      if (payload.event === "contacts:mutated" || payload.event === "any:mutated") {
+        void qc.invalidateQueries({ queryKey: ["contacts"] });
+      }
+    });
+    return () => { unsub(); };
+  }, [qc]);
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -77,6 +91,7 @@ export function ContactsContent() {
     onSuccess: async () => {
       setNewContact({ name: "", phone: "", sex: "", idNumber: "", type: "مستأجر" });
       await qc.invalidateQueries({ queryKey: ["contacts"] });
+      broadcastSync("contacts:mutated");
     },
   });
 

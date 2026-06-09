@@ -1,7 +1,25 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { getAccessiblePropertyIds } from "@/lib/office-scope";
+
+async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
+  const userType = String(user.userType ?? "");
+  if (userType !== "agency") return null;
+  const agencyId = String(user.userId);
+  const rows = await ds.query(
+    `SELECT id FROM properties
+     WHERE deleted_at IS NULL
+       AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = owner_id
+           AND u.created_by_agency_id = $1
+           AND u.deleted_at IS NULL
+       ))`,
+    [agencyId]
+  );
+  const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
+  return ids.length > 0 ? ids : [];
+}
 
 function ymdMonth(d: Date) {
   const y = d.getFullYear();

@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreVertical,
+  Handshake,
 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
@@ -77,10 +78,12 @@ export function OwnerHomeDashboard({
   const refreshTick = useRealtimeRefresh();
 
   const [netIncomeSar, setNetIncomeSar] = React.useState(0);
+  const [totalCommissionSar, setTotalCommissionSar] = React.useState(0);
   const [statsData, setStatsData] = React.useState<StatCard[]>([
     { label: "إجمالي الإيجارات", value: "0", unit: "ر.س", icon: DollarSign, color: "bg-blue-100 text-blue-600" },
     { label: "إجمالي التكاليف", value: "0", unit: "ر.س", icon: Receipt, color: "bg-red-100 text-red-600" },
-    { label: "نسبة صافي الدخل", value: "0", unit: "%", icon: Percent, color: "bg-purple-100 text-purple-600" },
+    { label: "عمولة المكتب", value: "0", unit: "ر.س", icon: Handshake, color: "bg-amber-100 text-amber-700" },
+    { label: "صافي المالك", value: "0", unit: "ر.س", icon: Percent, color: "bg-purple-100 text-purple-600" },
     { label: "إجمالي الوحدات المؤجرة", value: "0", unit: "%", icon: Building, color: "bg-indigo-100 text-indigo-600" },
   ]);
   const [chartData, setChartData] = React.useState<ChartPoint[]>(() =>
@@ -134,6 +137,9 @@ export function OwnerHomeDashboard({
         const netAmount = totalIncome - totalExpenses;
         const netRate = totalIncome > 0 ? (netAmount / totalIncome) * 100 : 0;
         setNetIncomeSar(netAmount);
+        const totCommission = (stats.monthly ?? []).reduce((a: number, r: any) => a + (Number(r.commission_sar) || 0), 0);
+        setTotalCommissionSar(totCommission);
+        const ownerNet = totalIncome - totCommission;
         const totUnits = Number(stats.totalUnits) || 0;
         const occUnits = Number(stats.occupiedUnits) || 0;
         const occRate = totUnits > 0 ? (occUnits / totUnits) * 100 : 0;
@@ -141,7 +147,8 @@ export function OwnerHomeDashboard({
         setStatsData([
           { label: "إجمالي الإيجارات", value: fmtSar(totalIncome), unit: "ر.س", icon: DollarSign, color: "bg-blue-100 text-blue-600" },
           { label: "إجمالي التكاليف", value: fmtSar(totalExpenses), unit: "ر.س", icon: Receipt, color: "bg-red-100 text-red-600" },
-          { label: "نسبة صافي الدخل", value: netRate.toFixed(2), unit: "%", icon: Percent, color: "bg-purple-100 text-purple-600" },
+          { label: "عمولة المكتب", value: fmtSar(totCommission), unit: "ر.س", icon: Handshake, color: "bg-amber-100 text-amber-700" },
+          { label: "صافي المالك", value: fmtSar(ownerNet), unit: "ر.س", icon: Percent, color: "bg-purple-100 text-purple-600" },
           { label: "إجمالي الوحدات المؤجرة", value: occRate.toFixed(0), unit: "%", icon: Building, color: "bg-indigo-100 text-indigo-600" },
         ]);
 
@@ -207,7 +214,7 @@ export function OwnerHomeDashboard({
       ) : null}
 
       {showStatsCards ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {statsData.map((stat, index) => {
             const Icon = stat.icon;
             return (

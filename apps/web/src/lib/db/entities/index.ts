@@ -13,12 +13,15 @@ export const UserSchema = schema({
     password_hash: { type: "varchar", length: 255 },
     full_name: { type: "varchar", length: 255, nullable: true },
     phone: { type: "varchar", length: 50, nullable: true },
+    id_number: { type: "varchar", length: 50, nullable: true },
     // owner | agency | superadmin
     user_type: { type: "varchar", length: 50, default: "owner" },
     is_active: { type: "boolean", default: true },
     token_version: { type: "int", default: 0 },
     // For agency (office) members only. Owners/personal typically have null.
     office_id: { type: "uuid", nullable: true },
+    // Tracks which agency user created this owner (when office_id is not set)
+    created_by_agency_id: { type: "uuid", nullable: true },
     deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },
     updated_at: { type: "timestamp", updateDate: true },
@@ -223,6 +226,7 @@ export const PropertySchema = schema({
     id: { type: "uuid", primary: true, generated: "uuid" },
     owner_id: { type: "uuid" },
     managing_office_id: { type: "uuid", nullable: true },
+    created_by_agency_id: { type: "uuid", nullable: true },
     name: { type: "varchar", length: 255 },
     title: { type: "varchar", length: 255, nullable: true },
     status: { type: "varchar", length: 50, default: "vacant" },
@@ -235,6 +239,7 @@ export const PropertySchema = schema({
     longitude: { type: "numeric", precision: 10, scale: 7, nullable: true },
     area_m2: { type: "numeric", precision: 10, scale: 2, nullable: true },
     property_cost: { type: "numeric", precision: 14, scale: 2, nullable: true },
+    floors_count: { type: "int", default: 0 },
     units_count: { type: "int", default: 0 },
     apartments_count: { type: "int", default: 0 },
     shops_count: { type: "int", default: 0 },

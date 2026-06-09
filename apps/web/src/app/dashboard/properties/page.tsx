@@ -366,7 +366,15 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
     electricityAccount: "",
     description: "",
     propertyCost: "",
+    apartmentsCount: "",
+    shopsCount: "",
   });
+
+  const totalUnitsFromCounts = React.useMemo(() => {
+    const a = Number(formData.apartmentsCount || 0);
+    const s = Number(formData.shopsCount || 0);
+    return [a, s].reduce((acc, n) => acc + (Number.isFinite(n) ? n : 0), 0);
+  }, [formData.apartmentsCount, formData.shopsCount]);
 
   const complexCityOptions = React.useMemo<string[]>(() => citiesForRegion(formData.region), [formData.region]);
   const complexNeighborhoodOptions = React.useMemo<string[]>(() => neighborhoodsForCity(formData.city), [formData.city]);
@@ -390,6 +398,10 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
           property_cost: formData.propertyCost ? Number(formData.propertyCost) : null,
           status: "vacant",
           property_model_type: "مجمع",
+          apartments_count: Number(formData.apartmentsCount || 0),
+          shops_count: Number(formData.shopsCount || 0),
+          other_units_count: 0,
+          units_count: totalUnitsFromCounts,
         }),
       });
       setSaving(false);
@@ -404,8 +416,8 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
         fd.append("image_type", "gallery");
         await authFetch("/api/property-images", { method: "POST", body: fd });
       }
-      onClose();
       router.push(`/dashboard/properties/units?property_id=${inserted.id}`);
+      onClose();
     })();
   };
 
@@ -562,6 +574,37 @@ function AddComplexModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
             />
           </div>
         </div>
+        <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4 dark:border-emerald-900/30 dark:bg-emerald-950/20">
+          <p className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">الوحدات</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">عدد الشقق</label>
+              <input
+                type="number"
+                min={0}
+                max={200}
+                placeholder="مثال: 5"
+                value={formData.apartmentsCount}
+                onChange={(e) => setFormData({ ...formData, apartmentsCount: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">عدد المحلات</label>
+              <input
+                type="number"
+                min={0}
+                max={200}
+                placeholder="مثال: 2"
+                value={formData.shopsCount}
+                onChange={(e) => setFormData({ ...formData, shopsCount: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">إجمالي الوحدات: {totalUnitsFromCounts}</p>
+        </div>
+
         <label className="block cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition hover:border-indigo-400 dark:border-emerald-800/50 dark:hover:border-indigo-500">
           <Upload className="mx-auto h-8 w-8 text-gray-400" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -781,7 +824,13 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
       }),
     });
     setSaving(false);
-    if (!res.ok) return;
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      const msg = errData?.error ?? "حدث خطأ أثناء إنشاء العقار.";
+      console.error("[properties POST error]", res.status, msg, errData);
+      setStructureError(msg);
+      return;
+    }
     const inserted = await res.json();
     if (!inserted?.id) return;
 
@@ -793,9 +842,15 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
       fd.append("image_type", "gallery");
       await authFetch("/api/property-images", { method: "POST", body: fd });
     }
-    onClose();
-    router.push(`/dashboard/properties/units?property_id=${inserted.id}`);
+    if (userType === "agency") {
+      router.push(`/agency/properties/units?property_id=${inserted.id}`);
+      onClose();
+    } else {
+      router.push(`/dashboard/properties/units?property_id=${inserted.id}`);
+      onClose();
+    }
   };
+
 
   const totalUnitsFromCounts = React.useMemo(() => {
     const a = Number(formData.apartmentsCount || 0);
@@ -1063,7 +1118,9 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
               </div>
 
               {structureError ? (
-                <p className="mt-3 text-sm text-red-600 dark:text-red-400">{structureError}</p>
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/30">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300">{structureError}</p>
+                </div>
               ) : null}
 
               <div className="mt-5 text-xs text-gray-500 dark:text-gray-400">
@@ -3317,7 +3374,10 @@ export function PropertiesContent() {
       />
       <AddPropertyModal
         isOpen={showAddProperty}
-        onClose={() => setShowAddProperty(false)}
+        onClose={() => {
+          setShowAddProperty(false);
+          void loadProperties();
+        }}
         userType={userType}
       />
     </div>
