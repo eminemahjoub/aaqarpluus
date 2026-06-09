@@ -10,6 +10,7 @@ import {
   ownerHidesTenantPii,
   paymentsByContractId,
 } from "@/lib/owner-tenant-privacy";
+import { log } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
@@ -320,7 +321,7 @@ export async function POST(req: NextRequest) {
             [officeId, ownerIdRaw]
           );
           if (!Array.isArray(linked) || linked.length === 0) {
-            console.error("[properties POST] owner not linked:", ownerIdRaw);
+            log.error("[properties POST] owner not linked:", ownerIdRaw);
             return badRequest("المالك غير مرتبط بهذا المكتب");
           }
         } else {
@@ -328,7 +329,7 @@ export async function POST(req: NextRequest) {
             .getRepository("User")
             .findOne({ where: { id: ownerIdRaw, created_by_agency_id: agencyId } });
           if (!owner) {
-            console.error("[properties POST] owner not found:", ownerIdRaw, "agency:", agencyId);
+            log.error("[properties POST] owner not found:", ownerIdRaw, "agency:", agencyId);
             return badRequest("المالك غير موجود");
           }
         }
@@ -336,7 +337,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (officeId && commissionPercentRaw === null) {
-        console.error("[properties POST] commission required for office");
+        log.error("[properties POST] commission required for office");
         return badRequest("نسبة العمولة مطلوبة");
       }
 

@@ -1,4 +1,5 @@
 import type { DataSource } from "typeorm";
+import { log } from "@/lib/logger";
 
 export async function getAccessiblePropertyIds(
   ds: DataSource,
@@ -9,7 +10,7 @@ export async function getAccessiblePropertyIds(
 
   const officeId = user.officeId ? String(user.officeId) : null;
   const agencyId = String(user.userId);
-  console.log("[office-scope GET] agencyId:", agencyId, "officeId:", officeId);
+  log.info("[office-scope GET] agencyId:", agencyId, "officeId:", officeId);
 
   if (!officeId) {
     // Agency without office: access properties they own directly,
@@ -30,7 +31,7 @@ export async function getAccessiblePropertyIds(
       [agencyId]
     );
     const ids = Array.from(new Set((rows ?? []).map((r: any) => String(r.property_id)).filter(Boolean)));
-    console.log("[office-scope GET] ids found:", ids.length, ids);
+    log.info("[office-scope GET] ids found:", ids.length, ids);
     return ids;
   }
 

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 import { verifyToken, TOKEN_COOKIE, type JwtPayload } from "./auth";
 import { jsonResponse } from "./errors";
+import { log } from "./logger";
 
 export async function getUserFromRequest(req: NextRequest): Promise<JwtPayload | null> {
   // 1. Fast path: headers injected by middleware (already verified)
@@ -52,6 +53,6 @@ export function created(data: unknown) {
 }
 
 export function serverError(error: unknown) {
-  console.error(error);
+  log.error(error);
   return jsonResponse({ error: "خطأ في الخادم", code: "INTERNAL" }, 500);
 }
