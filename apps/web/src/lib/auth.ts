@@ -75,3 +75,28 @@ export async function verifyRefreshToken(token: string): Promise<RefreshJwtPaylo
     return null;
   }
 }
+
+// CSRF Double Submit Cookie
+const CSRF_COOKIE = isProd ? "__Host-csrf_token" : "csrf_token";
+
+export function generateCsrfToken(): string {
+  const bytes = new Uint8Array(32);
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function serializeCsrfCookie(token: string) {
+  const secure = isProd ? "; Secure" : "";
+  return `${CSRF_COOKIE}=${token}; Path=/; SameSite=Lax${secure}; Max-Age=86400`;
+}
+
+export function validateCsrfToken(req: { cookies: { get: (name: string) => { value?: string } | undefined }; headers: { get: (name: string) => string | null } }): boolean {
+  const cookieToken = req.cookies.get(CSRF_COOKIE)?.value;
+  const headerToken = req.headers.get("x-csrf-token");
+  if (!cookieToken || !headerToken) return false;
+  return cookieToken === headerToken;
+}

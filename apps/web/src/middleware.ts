@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyToken, TOKEN_COOKIE } from "@/lib/auth";
+import { verifyToken, TOKEN_COOKIE, validateCsrfToken } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -35,6 +35,17 @@ export async function middleware(req: NextRequest) {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // CSRF check for state-changing methods (skip auth routes that set the cookie)
+  const safeMethods = ["GET", "HEAD", "OPTIONS"];
+  if (!safeMethods.includes(req.method) && !pathname.startsWith("/api/auth/")) {
+    if (!validateCsrfToken(req)) {
+      return new NextResponse(
+        JSON.stringify({ error: "طلب غير صالح", code: "INVALID_CSRF" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
   }
 
   // Inject decoded user into headers for downstream API routes
