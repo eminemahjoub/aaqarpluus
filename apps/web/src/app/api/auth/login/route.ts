@@ -1,17 +1,11 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDataSource } from "@/lib/db/data-source";
-import { signAccessToken, signRefreshToken, TOKEN_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { signAccessToken, signRefreshToken, TOKEN_COOKIE, REFRESH_COOKIE, serializeAuthCookie } from "@/lib/auth";
 import { ok, badRequest, serverError } from "@/lib/api-helpers";
 import { z } from "zod";
 import { badZod } from "@/lib/validation";
 import { checkRateLimit } from "@/lib/rate-limit";
-
-function authCookie(name: string, token: string, maxAgeSeconds: number) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  // Lax is OK for top-level navigations; HttpOnly prevents JS access.
-  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAgeSeconds}`;
-}
 
 const LoginSchema = z.object({
   identifier: z.string().trim().min(1, "البريد الإلكتروني/رقم الجوال مطلوب"),
@@ -105,8 +99,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    response.headers.append("Set-Cookie", authCookie(TOKEN_COOKIE, accessToken, 15 * 60));
-    response.headers.append("Set-Cookie", authCookie(REFRESH_COOKIE, refreshToken, 7 * 24 * 3600));
+    response.headers.append("Set-Cookie", serializeAuthCookie(TOKEN_COOKIE, accessToken, 15 * 60));
+    response.headers.append("Set-Cookie", serializeAuthCookie(REFRESH_COOKIE, refreshToken, 7 * 24 * 3600));
     return response;
   } catch (err) {
     return serverError(err);

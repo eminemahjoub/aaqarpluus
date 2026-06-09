@@ -10,14 +10,25 @@ const JWT_SECRET = new TextEncoder().encode(requireEnv("JWT_SECRET"));
 const JWT_REFRESH_SECRET = new TextEncoder().encode(requireEnv("JWT_REFRESH_SECRET"));
 
 // Cookies
-const TOKEN_COOKIE = "aaqar_token"; // access token
-const REFRESH_COOKIE = "aaqar_refresh_token";
+const TOKEN_COOKIE_BASE = "aaqar_token";
+const REFRESH_COOKIE_BASE = "aaqar_refresh_token";
+
+const isProd = process.env.NODE_ENV === "production";
+
+// __Host- prefix requires Secure, Path=/, and no Domain attribute
+const TOKEN_COOKIE = isProd ? `__Host-${TOKEN_COOKIE_BASE}` : TOKEN_COOKIE_BASE;
+const REFRESH_COOKIE = isProd ? `__Host-${REFRESH_COOKIE_BASE}` : REFRESH_COOKIE_BASE;
 
 // Expirations
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 
 export { TOKEN_COOKIE, REFRESH_COOKIE, ACCESS_TOKEN_EXPIRY, REFRESH_TOKEN_EXPIRY };
+
+export function serializeAuthCookie(name: string, token: string, maxAgeSeconds: number) {
+  const secure = isProd ? "; Secure" : "";
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAgeSeconds}`;
+}
 
 export interface JwtPayload {
   userId: string;
