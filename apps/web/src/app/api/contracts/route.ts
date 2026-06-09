@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
            ))`,
         [agencyId]
       );
-      const propertyIds = Array.from(new Set((propRows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
+      const propertyIds = Array.from(new Set((propRows ?? []).map((r: { id?: string }) => String(r.id)).filter(Boolean)));
       if (propertyIds.length === 0) return ok([]);
       qb = qb.where("c.property_id IN (:...propertyIds)", { propertyIds });
     } else {
@@ -58,10 +58,10 @@ export async function GET(req: NextRequest) {
     const contracts = await qb.getMany();
     if (!ownerHidesTenantPii(user)) return ok(contracts);
 
-    const ids = contracts.map((c: any) => String(c.id)).filter(Boolean);
+    const ids = contracts.map((c: { id?: string }) => String(c.id)).filter(Boolean);
     const payMap = await paymentsByContractId(ds, ids);
     return ok(
-      contracts.map((c: any) => sanitizeContractForOwner(c as Record<string, unknown>, payMap[String(c.id)] ?? []))
+      contracts.map((c: Record<string, unknown>) => sanitizeContractForOwner(c, payMap[String(c.id)] ?? []))
     );
   } catch (err) {
     return serverError(err);
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     const propertyId = body.property_id ? String(body.property_id) : null;
     if (!propertyId) return badRequest("معرف العقار مطلوب");
 
-    const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+    const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } });
     if (!prop) return badRequest("العقار غير موجود");
 
     // Verify agency can access this property
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const ownerId = String((prop as any).owner_id);
+    const ownerId = String((prop as { owner_id?: string }).owner_id);
 
     // Accept aliases: rent_amount/rent_total → rent_total_sar, payment_period/payment_frequency → payment_frequency
     const rentTotal = body.rent_total_sar ?? body.rent_amount ?? null;
@@ -133,20 +133,20 @@ export async function POST(req: NextRequest) {
       status: body.status ?? "active",
       notes: body.notes ?? null,
       extra: body.extra ?? null,
-    } as any);
+    });
 
     await repo.save(contract);
 
     // Patch extra fields via raw SQL in case TypeORM entity metadata cache is stale
-    const contractId = (contract as any).id;
+    const contractId = (contract as { id?: string }).id;
     if (body.notes) {
       await ds.query("UPDATE contracts SET notes = $1 WHERE id = $2", [body.notes, contractId]);
-      (contract as any).notes = body.notes;
+      (contract as { notes?: string }).notes = body.notes;
     }
 
     // Update unit status to occupied if assigned
     if (body.unit_id) {
-      await ds.getRepository("Unit").update(body.unit_id, { status: "occupied" } as any);
+      await ds.getRepository("Unit").update(body.unit_id, { status: "occupied" });
     }
 
     // Auto-update property status to "active" when an active contract is created
@@ -157,18 +157,19 @@ export async function POST(req: NextRequest) {
     // Build payment schedule: explicit payments take priority, else auto-generate from contract terms
     let payments = Array.isArray(body.payments) ? body.payments : [];
     if (payments.length === 0) {
-      const rentTotal = (contract as any).rent_total_sar ? Number((contract as any).rent_total_sar) : null;
-      const startDate = (contract as any).start_date;
-      const endDate = (contract as any).end_date;
-      const freq = (contract as any).payment_frequency;
-      const instCount = (contract as any).installments_count;
+      const c = contract as { rent_total_sar?: number | string; start_date?: string; end_date?: string; payment_frequency?: string | null; installments_count?: number | string };
+      const rentTotal = c.rent_total_sar ? Number(c.rent_total_sar) : null;
+      const startDate = c.start_date;
+      const endDate = c.end_date;
+      const freq = c.payment_frequency;
+      const instCount = c.installments_count;
       if (rentTotal && startDate && endDate && (freq || instCount)) {
         payments = generatePaymentSchedule({
           rent_total_sar: rentTotal,
           start_date: startDate,
           end_date: endDate,
-          payment_frequency: freq,
-          installments_count: instCount,
+          payment_frequency: freq ?? null,
+          installments_count: instCount ? Number(instCount) : null,
         });
       }
     }
@@ -177,12 +178,12 @@ export async function POST(req: NextRequest) {
       for (const p of payments) {
         if (!p.due_date || Number(p.amount_sar) <= 0) continue;
         const payment = payRepo.create({
-          contract_id: (contract as any).id,
+          contract_id: (contract as { id?: string }).id,
           amount_sar: Number(p.amount_sar),
           due_date: p.due_date,
           status: p.status ?? "pending",
           notes: p.notes ?? null,
-        } as any);
+        });
         await payRepo.save(payment);
       }
     }

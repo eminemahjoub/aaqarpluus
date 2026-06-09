@@ -131,26 +131,34 @@ export async function GET(req: NextRequest) {
         .orderBy("c.start_date", "DESC")
         .getMany();
 
-      const contractIds = contracts.map((c: any) => String(c.id)).filter(Boolean);
+      const contractIds = contracts.map((c: { id?: string }) => String(c.id)).filter(Boolean);
       const payMap = hidePii ? await paymentsByContractId(ds, contractIds) : {};
 
       for (const c of contracts) {
-        const pid = (c as any).property_id;
+        const cc = c as {
+          property_id?: string;
+          end_date?: string;
+          start_date?: string;
+          unit?: { label?: string };
+          contact?: { name?: string; phone?: string };
+          id?: string;
+        };
+        const pid = cc.property_id;
         if (!pid || contractMap[pid]) continue;
         if (hidePii) {
           contractMap[pid] = buildOwnerContractSummary({
-            end_date: (c as any).end_date,
-            start_date: (c as any).start_date,
-            unit_label: (c as any).unit?.label,
-            payments: payMap[String(c.id)] ?? [],
+            end_date: cc.end_date,
+            start_date: cc.start_date,
+            unit_label: cc.unit?.label,
+            payments: payMap[String(cc.id)] ?? [],
           });
         } else {
           contractMap[pid] = {
-            contact_name: (c as any).contact?.name ?? "—",
-            contact_phone: (c as any).contact?.phone ?? null,
-            unit_label: (c as any).unit?.label ?? "—",
-            start_date: (c as any).start_date ?? "—",
-            end_date: (c as any).end_date ?? "—",
+            contact_name: cc.contact?.name ?? "—",
+            contact_phone: cc.contact?.phone ?? null,
+            unit_label: cc.unit?.label ?? "—",
+            start_date: cc.start_date ?? "—",
+            end_date: cc.end_date ?? "—",
           };
         }
       }
@@ -159,7 +167,7 @@ export async function GET(req: NextRequest) {
     // Fetch cover image per property for thumbnail (prefer image_type='cover', fallback to first)
     let coverMap: Record<string, string> = {};
     if (propIds.length > 0) {
-      const ownerIds = Array.from(new Set(properties.map((p: any) => String(p.owner_id)).filter(Boolean)));
+      const ownerIds = Array.from(new Set(properties.map((p: { owner_id?: string }) => String(p.owner_id)).filter(Boolean)));
       const covers = await ds.query(
         `SELECT DISTINCT ON (property_id) property_id, public_url
          FROM property_images
@@ -218,7 +226,7 @@ export async function GET(req: NextRequest) {
       managing_office_email: p.managing_office_id ? officeMap[String(p.managing_office_id)]?.email ?? null : null,
     }));
 
-    const meta = (properties as any).__pagination as any | undefined;
+    const meta = (properties as { __pagination?: { total: number; page: number; limit: number; search?: string | null } }).__pagination;
     if (meta?.page && meta?.limit !== undefined) {
       return ok(paginated({ items: result, total: Number(meta.total) || 0, page: meta.page, limit: meta.limit, search: meta.search }));
     }
@@ -318,7 +326,7 @@ export async function POST(req: NextRequest) {
         } else {
           const owner = await ds
             .getRepository("User")
-            .findOne({ where: { id: ownerIdRaw, created_by_agency_id: agencyId } as any });
+            .findOne({ where: { id: ownerIdRaw, created_by_agency_id: agencyId } });
           if (!owner) {
             console.error("[properties POST] owner not found:", ownerIdRaw, "agency:", agencyId);
             return badRequest("المالك غير موجود");
@@ -361,7 +369,7 @@ export async function POST(req: NextRequest) {
         lessor_type: lessorType,
         lessor_contact_id: lessorContactId,
         commission_percent: commissionPercentRaw,
-      } as any);
+      });
 
       await repo.save(property);
 
@@ -373,11 +381,11 @@ export async function POST(req: NextRequest) {
           VALUES ($1, $2, $3, $4, NOW())
           ON CONFLICT DO NOTHING
           `,
-          [officeId, linkOwnerId, String((property as any).id), commissionPercentRaw]
+          [officeId, linkOwnerId, String((property as { id?: string }).id), commissionPercentRaw]
         );
       }
 
-      await generateUnits(ds, property as any, body);
+      await generateUnits(ds, property, body);
 
       return created(property);
     }
@@ -416,16 +424,17 @@ export async function POST(req: NextRequest) {
       lessor_type: lessorType,
       lessor_contact_id: lessorContactId,
       commission_percent: commissionPercentRaw,
-    } as any);
+    });
 
     await repo.save(property);
 
     // If owner assigned a managing office, create/update the link so the agency can access the property.
-    const managingOfficeIdSaved = (property as any).managing_office_id ? String((property as any).managing_office_id) : null;
+    const p = property as { managing_office_id?: string | null; commission_percent?: number | string | null; id?: string };
+    const managingOfficeIdSaved = p.managing_office_id ? String(p.managing_office_id) : null;
     if (managingOfficeIdSaved) {
       const commission =
-        (property as any).commission_percent !== undefined && (property as any).commission_percent !== null && (property as any).commission_percent !== ""
-          ? Number((property as any).commission_percent)
+        p.commission_percent !== undefined && p.commission_percent !== null && p.commission_percent !== ""
+          ? Number(p.commission_percent)
           : null;
       await ds.query(
         `
@@ -433,11 +442,11 @@ export async function POST(req: NextRequest) {
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT DO NOTHING
         `,
-        [managingOfficeIdSaved, ownerId, String((property as any).id), commission]
+        [managingOfficeIdSaved, ownerId, String(p.id), commission]
       );
     }
 
-    await generateUnits(ds, property as any, body);
+    await generateUnits(ds, property, body);
 
     return created(property);
   } catch (err) {
@@ -445,7 +454,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function generateUnits(ds: any, property: any, body: any) {
+async function generateUnits(ds: { getRepository: (name: string) => { create: (data: unknown) => unknown; save: (data: unknown[]) => Promise<unknown> } }, property: { id?: string; owner_id?: string }, body: { apartments_count?: number | string; shops_count?: number | string; other_units_count?: number | string }) {
   const propertyId = String(property.id);
   const ownerId = String(property.owner_id);
   const unitRepo = ds.getRepository("Unit");
@@ -467,7 +476,7 @@ async function generateUnits(ds: any, property: any, body: any) {
         label: `شقة ${i}`,
         unit_type: "apartment",
         status: "vacant",
-      } as any)
+      })
     );
   }
 
@@ -480,7 +489,7 @@ async function generateUnits(ds: any, property: any, body: any) {
         label: `محل ${i}`,
         unit_type: "shop",
         status: "vacant",
-      } as any)
+      })
     );
   }
 
@@ -493,7 +502,7 @@ async function generateUnits(ds: any, property: any, body: any) {
         label: `وحدة ${i}`,
         unit_type: "other",
         status: "vacant",
-      } as any)
+      })
     );
   }
 

@@ -58,39 +58,50 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
-    if ((user as any).deleted_at) {
+    const u = user as {
+      deleted_at?: string | null;
+      is_active?: boolean;
+      password_hash: string;
+      id: string;
+      email: string;
+      user_type: string;
+      office_id?: string | null;
+      token_version?: number | string;
+      full_name?: string;
+    };
+    if (u.deleted_at) {
       return badRequest("هذا الحساب غير متاح");
     }
-    if ((user as any).is_active === false) {
+    if (u.is_active === false) {
       return badRequest("تم تعطيل هذا الحساب");
     }
 
-    const valid = await bcrypt.compare(password, (user as any).password_hash);
+    const valid = await bcrypt.compare(password, u.password_hash);
     if (!valid) {
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
 
     const accessToken = await signAccessToken({
-      userId: (user as any).id,
-      email: (user as any).email,
-      userType: (user as any).user_type,
-      officeId: (user as any).office_id ?? null,
+      userId: u.id,
+      email: u.email,
+      userType: u.user_type,
+      officeId: u.office_id ?? null,
     });
 
-    const tokenVersion = Number((user as any).token_version) || 0;
+    const tokenVersion = Number(u.token_version) || 0;
     const refreshToken = await signRefreshToken({
-      userId: (user as any).id,
+      userId: u.id,
       tokenVersion,
     });
 
     const response = ok({
       accessToken,
       user: {
-        id: (user as any).id,
-        email: (user as any).email,
-        fullName: (user as any).full_name,
-        userType: (user as any).user_type,
-        officeId: (user as any).office_id ?? null,
+        id: u.id,
+        email: u.email,
+        fullName: u.full_name,
+        userType: u.user_type,
+        officeId: u.office_id ?? null,
       },
     });
 

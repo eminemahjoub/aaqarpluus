@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
       id_number: isTenant ? (body.id_number?.trim() || null) : null,
       type: body.type ?? "tenant",
       status: body.status ?? "active",
-    } as any);
+    });
 
     await repo.save(contact);
     return created(contact);
