@@ -4,7 +4,20 @@ import { verifyToken, TOKEN_COOKIE, type JwtPayload } from "./auth";
 import { jsonResponse } from "./errors";
 
 export async function getUserFromRequest(req: NextRequest): Promise<JwtPayload | null> {
-  // Support both cookie-based auth (browser) and Bearer token (API/curl/mobile)
+  // 1. Fast path: headers injected by middleware (already verified)
+  const userId = req.headers.get("x-user-id");
+  const email = req.headers.get("x-user-email");
+  const userType = req.headers.get("x-user-type");
+  if (userId && email && userType) {
+    return {
+      userId,
+      email,
+      userType,
+      officeId: req.headers.get("x-office-id"),
+    };
+  }
+
+  // 2. Fallback: direct cookie-based or Bearer token auth (API/curl/mobile)
   const cookieToken = req.cookies.get(TOKEN_COOKIE)?.value;
   if (cookieToken) return verifyToken(cookieToken);
 
