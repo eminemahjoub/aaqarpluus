@@ -3612,6 +3612,13 @@ function PropertyDetail({
   const refreshTick = useRealtimeRefresh();
   const [localTick, setLocalTick] = useState(0);
   const bumpRefresh = React.useCallback(() => setLocalTick((t) => t + 1), []);
+  const unitsEditHref = React.useMemo(
+    () =>
+      userType === "agency"
+        ? `/agency/properties/units?property_id=${property.id}`
+        : `/dashboard/properties/units?property_id=${property.id}`,
+    [property.id, userType],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -4539,9 +4546,18 @@ function PropertyDetail({
           {/* Header bar */}
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                الوحدات
-                <span className="mr-2 rounded-full bg-indigo-100 px-2.5 py-0.5 text-sm font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+              <h3 className="flex items-center gap-2">
+                {canMutateProperties ? (
+                  <Link
+                    href={unitsEditHref}
+                    className="text-lg font-bold text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400"
+                  >
+                    الوحدات
+                  </Link>
+                ) : (
+                  <span className="text-lg font-bold text-gray-900 dark:text-white">الوحدات</span>
+                )}
+                <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-sm font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
                   {propertyUnits.length}
                 </span>
               </h3>
@@ -4556,11 +4572,7 @@ function PropertyDetail({
             </div>
             {canMutateProperties ? (
               <a
-                href={
-                  userType === "agency"
-                    ? `/agency/properties/units?property_id=${property.id}`
-                    : `/dashboard/properties/units?property_id=${property.id}`
-                }
+                href={unitsEditHref}
                 className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
               >
                 <Edit className="h-4 w-4" />
