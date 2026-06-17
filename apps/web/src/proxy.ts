@@ -70,7 +70,7 @@ export async function proxy(request: NextRequest) {
 
     if (userType === "agency" && path.startsWith("/dashboard")) {
       const suffix = path.slice("/dashboard".length);
-      const known = new Set(["", "/", "/properties", "/contacts", "/documents", "/reports", "/profile"]);
+      const known = new Set(["", "/", "/properties", "/properties/units", "/contacts", "/documents", "/reports", "/profile"]);
       const nextPath = known.has(suffix) ? `/agency${suffix}` : "/agency";
       const url = new URL(nextPath, request.url);
       return NextResponse.redirect(url);

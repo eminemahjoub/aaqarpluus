@@ -3232,6 +3232,7 @@ export function PropertiesContent() {
           canMutateProperties={canMutateProperties}
           canManageContracts={canManageContracts}
           ownerHidesTenantPii={ownerHidesTenantPii}
+          userType={userType}
           onDelete={canMutateProperties ? () => handleDeleteProperty(selectedProperty.id) : undefined}
         />
         <DeleteConfirmationModal
@@ -3509,6 +3510,7 @@ function PropertyDetail({
   canMutateProperties,
   canManageContracts,
   ownerHidesTenantPii,
+  userType,
 }: {
   property: DbProperty;
   onBack: () => void;
@@ -3517,6 +3519,7 @@ function PropertyDetail({
   canMutateProperties: boolean;
   canManageContracts: boolean;
   ownerHidesTenantPii: boolean;
+  userType: "owner" | "agency" | "personal";
 }) {
   const [activeTab, setActiveTab] = useState("info");
   const [selectedContractSummary, setSelectedContractSummary] = useState<OwnerContractSummary | null>(null);
@@ -4553,7 +4556,11 @@ function PropertyDetail({
             </div>
             {canMutateProperties ? (
               <a
-                href={`/dashboard/properties/units?property_id=${property.id}`}
+                href={
+                  userType === "agency"
+                    ? `/agency/properties/units?property_id=${property.id}`
+                    : `/dashboard/properties/units?property_id=${property.id}`
+                }
                 className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
               >
                 <Edit className="h-4 w-4" />
