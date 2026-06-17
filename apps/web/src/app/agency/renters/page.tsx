@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   Phone, User, Search, Filter, MessageSquare, FileText, Calendar, Mail, Shield, IdCard,
-  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList
+  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download
 } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -313,6 +313,21 @@ export default function AgencyRentersPage() {
     if (convId) router.push(`/agency/messages?c=${encodeURIComponent(convId)}`);
   }
 
+  async function markPaymentPaid(paymentId: string) {
+    const res = await authFetch(`/api/contract-payments/${paymentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "paid", paid_at: new Date().toISOString() }),
+    });
+    if (!res.ok) return;
+    const result = await res.json().catch(() => null);
+    const updatedPayment = result?.payment ?? result;
+    if (!updatedPayment?.id) return;
+    qc.setQueryData(["agency", "renters", "contract-payments", syncTick], (old: PaymentItem[] | undefined) =>
+      (old ?? []).map((payment) => (payment.id === updatedPayment.id ? { ...payment, ...updatedPayment } : payment)),
+    );
+  }
+
   function resetForm() {
     setPropertyId("");
     setUnitId("");
@@ -604,6 +619,8 @@ export default function AgencyRentersPage() {
                 <table className="w-full min-w-[720px] text-right text-sm">
                   <thead className="bg-gray-50 text-gray-700 dark:bg-emerald-950/30 dark:text-gray-200">
                     <tr>
+                      <th className="px-4 py-3">الوصل</th>
+                      <th className="px-4 py-3">دفع</th>
                       <th className="px-4 py-3">القسط</th>
                       <th className="px-4 py-3">المبلغ</th>
                       <th className="px-4 py-3">تاريخ الاستحقاق</th>
@@ -615,6 +632,34 @@ export default function AgencyRentersPage() {
                   <tbody className="divide-y divide-gray-100 bg-white dark:divide-emerald-900/30 dark:bg-[#132a1f]">
                     {selectedPaymentContract.payments.map((payment, index) => (
                       <tr key={payment.id}>
+                        <td className="px-4 py-3">
+                          {payment.receipt_url ? (
+                            <a
+                              href={payment.receipt_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              وصل PDF
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {payment.status === "paid" ? (
+                            <span className="text-xs text-emerald-700 dark:text-emerald-300">تم الدفع</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void markPaymentPaid(payment.id)}
+                              className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                            >
+                              دفع
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-gray-900 dark:text-white">
                           {payment.notes || `قسط ${index + 1}`}
                         </td>

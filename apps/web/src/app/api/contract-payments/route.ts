@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { z } from "zod";
 import { UuidSchema, badZod } from "@/lib/validation";
 import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
+import { createPaymentReceiptPdfBytes } from "@/lib/receipt-pdf";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
   const userType = String(user.userType ?? "");
@@ -38,6 +41,35 @@ const CreatePaymentsSchema = z.union([
   z.array(PaymentItemSchema),
   z.object({ batch: z.array(PaymentItemSchema) }),
 ]);
+
+async function createReceiptDocument(ds: any, contract: any, payment: any) {
+  const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment });
+  const uploadsDir = join(process.cwd(), "public", "uploads", String(contract.owner_id));
+  await mkdir(uploadsDir, { recursive: true });
+  const contractNumber = contract.extra && typeof contract.extra === "object"
+    ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)
+    : contract.id;
+  const fileName = `receipt_${payment.id}_${contractNumber}.pdf`;
+  const filePath = join(uploadsDir, fileName);
+  await writeFile(filePath, Buffer.from(pdfBytes));
+  const publicUrl = `/uploads/${contract.owner_id}/${fileName}`;
+  const docRepo = ds.getRepository("Document");
+  const doc = docRepo.create({
+    owner_id: contract.owner_id,
+    property_id: contract.property_id,
+    file_name: fileName,
+    mime_type: "application/pdf",
+    object_path: filePath,
+    public_url: publicUrl,
+    size_bytes: pdfBytes.length,
+    bucket: "local",
+    type: "pdf",
+    category: "payment_receipt",
+    contract_id: contract.id,
+  } as any);
+  await docRepo.save(doc);
+  return doc;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -156,6 +188,23 @@ export async function POST(req: NextRequest) {
         notes: item.notes ?? null,
       } as any);
       await repo.save(payment);
+      if (String((payment as any).status) === "paid") {
+        const contract = await ds
+          .getRepository("Contract")
+          .createQueryBuilder("c")
+          .leftJoinAndSelect("c.contact", "contact")
+          .leftJoinAndSelect("c.property", "property")
+          .leftJoinAndSelect("c.unit", "unit")
+          .where("c.id = :id", { id: cid })
+          .getOne();
+        if (contract) {
+          await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
+            "payment_receipt",
+            `receipt_${(payment as any).id}_%`,
+          ]);
+          await createReceiptDocument(ds, contract, payment);
+        }
+      }
       saved.push(payment);
     }
 

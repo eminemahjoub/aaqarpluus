@@ -52,11 +52,17 @@ export default function AgencyOwnersPage() {
   async function handleLinkOwner() {
     setLinkError(null);
     setFormError(null);
-    const res = await authFetch("/api/offices/owners", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ownerEmail }),
-    });
+    let res: Response;
+    try {
+      res = await authFetch("/api/offices/owners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerEmail }),
+      });
+    } catch {
+      setLinkError("تعذر الاتصال بالخادم. تأكد أن التطبيق يعمل ثم حاول مرة أخرى.");
+      return;
+    }
     if (!res.ok) {
       const j = await res.json().catch(() => null);
       setLinkError(j?.error ?? "تعذر الربط");

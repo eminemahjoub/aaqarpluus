@@ -40,11 +40,16 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
     }
   }
 
-  const first = await fetch(input, {
-    ...init,
-    headers,
-    credentials: "include",
-  });
+  let first: Response;
+  try {
+    first = await fetch(input, {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("تعذر الاتصال بالخادم");
+  }
 
   if (first.status !== 401) return first;
 
