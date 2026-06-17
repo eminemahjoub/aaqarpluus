@@ -1,16 +1,54 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { REFRESH_COOKIE, TOKEN_COOKIE, verifyToken } from "./lib/auth";
+import { REFRESH_COOKIE, TOKEN_COOKIE, verifyToken, validateCsrfToken } from "./lib/auth";
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
-  // Protect private areas + route agencies away from /dashboard.
+  // --- API route protection ---
+  if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
+    const token = request.cookies.get(TOKEN_COOKIE)?.value;
+    if (!token) {
+      return new NextResponse(JSON.stringify({ error: "غير مصرح", code: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const user = await verifyToken(token);
+    if (!user) {
+      return new NextResponse(JSON.stringify({ error: "غير مصرح", code: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const safeMethods = ["GET", "HEAD", "OPTIONS"];
+    if (!safeMethods.includes(request.method)) {
+      if (!validateCsrfToken(request)) {
+        return new NextResponse(
+          JSON.stringify({ error: "طلب غير صالح", code: "INVALID_CSRF" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", user.userId);
+    requestHeaders.set("x-user-email", user.email);
+    requestHeaders.set("x-user-type", user.userType);
+    if (user.officeId) {
+      requestHeaders.set("x-office-id", user.officeId);
+    }
+
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+  }
+
+  // --- Page route protection ---
   if (path.startsWith("/dashboard") || path.startsWith("/agency") || path.startsWith("/admin")) {
     const token = request.cookies.get(TOKEN_COOKIE)?.value;
     const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
     if (!token) {
-      // If access token is missing but refresh exists, allow the app to load;
-      // client-side authFetch will refresh on first 401.
       if (refresh) return NextResponse.next({ request });
       const loginUrl = new URL("/login", request.url);
       return NextResponse.redirect(loginUrl);
@@ -24,15 +62,12 @@ export async function proxy(request: NextRequest) {
 
     const userType = String((user as any).userType ?? "");
 
-    // Admin area: only superadmin.
     if (path.startsWith("/admin")) {
       if (userType === "superadmin") return NextResponse.next({ request });
-      // logged-in but not superadmin → redirect to their home area
       const url = new URL(userType === "agency" ? "/agency" : "/dashboard", request.url);
       return NextResponse.redirect(url);
     }
 
-    // Agency users should never use /dashboard (redirect to /agency equivalents).
     if (userType === "agency" && path.startsWith("/dashboard")) {
       const suffix = path.slice("/dashboard".length);
       const known = new Set(["", "/", "/properties", "/contacts", "/documents", "/reports", "/profile"]);
@@ -41,12 +76,12 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Non-agency users should not access /agency.
     if (userType !== "agency" && path.startsWith("/agency")) {
       const url = new URL("/dashboard", request.url);
       return NextResponse.redirect(url);
     }
   }
+
   return NextResponse.next({ request });
 }
 

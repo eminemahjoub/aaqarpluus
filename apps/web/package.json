@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --unhandled-rejections=warn node_modules/next/dist/bin/next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node --unhandled-rejections=warn node_modules/next/dist/bin/next start",
     "lint": "next lint",
     "seed:superadmin": "node --env-file .env.local scripts/seed-superadmin.mjs",
     "test": "vitest run",
