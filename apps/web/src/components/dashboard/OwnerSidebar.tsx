@@ -32,7 +32,7 @@ const ownerMenuItems = [
   { href: "/dashboard/properties", label: "العقارات", icon: Building2 },
   { href: "/dashboard/tasks", label: "المهام", icon: ClipboardList },
   { href: "/dashboard/messages", label: "الرسائل", icon: MessageSquare },
-  { href: "/dashboard/contacts", label: "جهات الاتصال", icon: Users },
+  { href: "/dashboard/contacts", label: "جهات الاتصال", icon: Users, disabled: true },
   { href: "/dashboard/documents", label: "المستندات", icon: FolderOpen },
   { href: "/dashboard/agencies", label: "المكاتب", icon: Users },
   { href: "/dashboard/reports", label: "التقارير", icon: BarChart3 },
@@ -42,13 +42,13 @@ const ownerMenuItems = [
 
 const agencyMenuItems = [
   { href: "/agency", label: "المكتب", icon: LayoutDashboard },
-  { href: "/agency/automation", label: "الأتمتة", icon: Zap },
+  { href: "/agency/automation", label: "الأتمتة", icon: Zap, disabled: true },
   { href: "/agency/owners", label: "الملاك", icon: Users },
   { href: "/agency/renters", label: "المستأجرين", icon: User },
   { href: "/agency/members", label: "الموظفين", icon: UserPlus },
   { href: "/agency/properties", label: "العقارات", icon: Building2 },
   { href: "/agency/messages", label: "الرسائل", icon: MessageSquare },
-  { href: "/agency/contacts", label: "جهات الاتصال", icon: Users },
+  { href: "/agency/contacts", label: "جهات الاتصال", icon: Users, disabled: true },
   { href: "/agency/documents", label: "المستندات", icon: FolderOpen },
   { href: "/agency/reports", label: "التقارير", icon: BarChart3 },
   { href: "/agency/profile", label: "الملف الشخصي", icon: UserCircle },
@@ -113,6 +113,27 @@ export function DashboardSidebar({
             item.href === "/dashboard" || item.href === "/agency"
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+          if (item.disabled) {
+            return (
+              <button
+                key={item.href}
+                type="button"
+                disabled
+                className={[
+                  "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-white/40",
+                  collapsed ? "justify-center px-2" : "",
+                ].join(" ")}
+                title={collapsed ? item.label : undefined}
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/40 flex-shrink-0">
+                  <Icon className="h-5 w-5" aria-hidden />
+                </div>
+                {!collapsed && <span className="flex-1">{item.label}</span>}
+              </button>
+            );
+          }
+
           return (
             <Link
               key={item.href}
