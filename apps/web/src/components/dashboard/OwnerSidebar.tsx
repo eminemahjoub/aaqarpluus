@@ -39,7 +39,6 @@ const ownerMenuItems: DashboardMenuItem[] = [
   { href: "/dashboard/properties", label: "العقارات", icon: Building2 },
   { href: "/dashboard/tasks", label: "المهام", icon: ClipboardList },
   { href: "/dashboard/messages", label: "الرسائل", icon: MessageSquare },
-  { href: "/dashboard/contacts", label: "جهات الاتصال", icon: Users, disabled: true },
   { href: "/dashboard/documents", label: "المستندات", icon: FolderOpen },
   { href: "/dashboard/agencies", label: "المكاتب", icon: Users },
   { href: "/dashboard/reports", label: "التقارير", icon: BarChart3 },
@@ -49,13 +48,11 @@ const ownerMenuItems: DashboardMenuItem[] = [
 
 const agencyMenuItems: DashboardMenuItem[] = [
   { href: "/agency", label: "المكتب", icon: LayoutDashboard },
-  { href: "/agency/automation", label: "الأتمتة", icon: Zap, disabled: true },
   { href: "/agency/owners", label: "الملاك", icon: Users },
   { href: "/agency/renters", label: "المستأجرين", icon: User },
   { href: "/agency/members", label: "الموظفين", icon: UserPlus },
   { href: "/agency/properties", label: "العقارات", icon: Building2 },
   { href: "/agency/messages", label: "الرسائل", icon: MessageSquare },
-  { href: "/agency/contacts", label: "جهات الاتصال", icon: Users, disabled: true },
   { href: "/agency/documents", label: "المستندات", icon: FolderOpen },
   { href: "/agency/reports", label: "التقارير", icon: BarChart3 },
   { href: "/agency/profile", label: "الملف الشخصي", icon: UserCircle },
