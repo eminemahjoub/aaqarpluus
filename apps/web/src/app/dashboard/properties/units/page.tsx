@@ -37,6 +37,23 @@ function addMonthsYmd(startYmd: string, months: number) {
   return `${yy}-${mm}-${dd}`;
 }
 
+function generateContractNumber() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `عقد-${y}${m}${d}-${random}`;
+}
+
+function contractNumberFromContract(ct: any | null | undefined) {
+  const extra = ct?.extra;
+  if (extra && typeof extra === "object" && "contract_number" in extra) {
+    return String((extra as { contract_number?: unknown }).contract_number ?? "");
+  }
+  return "";
+}
+
 type ComponentType =
   | "living_room"
   | "bedroom"
@@ -66,6 +83,8 @@ type UnitDraft = {
   priceSar?: number;
   tenantContactId: string;
   contractId: string | null;
+  contractNumber: string;
+  paymentFrequency: string;
   contractStartDate: string;
   contractEndDate: string;
   newTenantName: string;
@@ -84,13 +103,15 @@ type UnitDraft = {
 
 function tenantFieldsFromContract(ct: any | null | undefined): Pick<
   UnitDraft,
-  "tenantContactId" | "contractId" | "contractStartDate" | "contractEndDate"
+  "tenantContactId" | "contractId" | "contractNumber" | "paymentFrequency" | "contractStartDate" | "contractEndDate"
 > {
   const today = localCalendarYmd();
   if (!ct) {
     return {
       tenantContactId: "",
       contractId: null,
+      contractNumber: "",
+      paymentFrequency: "monthly",
       contractStartDate: today,
       contractEndDate: addMonthsYmd(today, 12),
     };
@@ -100,6 +121,8 @@ function tenantFieldsFromContract(ct: any | null | undefined): Pick<
   return {
     tenantContactId: ct.contact_id ? String(ct.contact_id) : "",
     contractId: ct.id ? String(ct.id) : null,
+    contractNumber: contractNumberFromContract(ct),
+    paymentFrequency: ct.payment_frequency ? String(ct.payment_frequency) : "monthly",
     contractStartDate: start,
     contractEndDate: end,
   };
@@ -317,6 +340,7 @@ export default function UnitsBuilderPage() {
       if (!contactId) return;
       const rent = Number(u.priceSar) || 0;
       if (rent <= 0) return;
+      const contractNumber = u.contractNumber.trim() || generateContractNumber();
       const payload = {
         property_id: propertyId,
         unit_id: u.id,
@@ -324,14 +348,21 @@ export default function UnitsBuilderPage() {
         start_date: u.contractStartDate,
         end_date: u.contractEndDate,
         rent_total_sar: rent,
+        payment_frequency: u.paymentFrequency || "monthly",
+        extra: { contract_number: contractNumber },
         status: "active",
       };
       if (u.contractId) {
-        await authFetch(`/api/contracts/${u.contractId}`, {
+        const res = await authFetch(`/api/contracts/${u.contractId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (res.ok) {
+          setUnits((prev) =>
+            prev.map((row) => (row.id === u.id ? { ...row, contractNumber } : row)),
+          );
+        }
       } else {
         const res = await authFetch("/api/contracts", {
           method: "POST",
@@ -342,7 +373,7 @@ export default function UnitsBuilderPage() {
           const inserted = await res.json();
           if (inserted?.id) {
             setUnits((prev) =>
-              prev.map((row) => (row.id === u.id ? { ...row, contractId: String(inserted.id) } : row)),
+              prev.map((row) => (row.id === u.id ? { ...row, contractId: String(inserted.id), contractNumber } : row)),
             );
           }
         }
@@ -570,6 +601,8 @@ export default function UnitsBuilderPage() {
                 unitType,
                 priceSar: u.rent_amount != null ? Number(u.rent_amount) : 0,
                 ...tenant,
+                contractNumber: tenant.contractNumber || generateContractNumber(),
+                paymentFrequency: tenant.paymentFrequency || "monthly",
                 newTenantName: "",
                 newTenantPhone: "",
                 newTenantSex: "",
@@ -619,6 +652,8 @@ export default function UnitsBuilderPage() {
           unitType,
           priceSar: u.rent_amount != null ? Number(u.rent_amount) : 0,
           ...tenant,
+          contractNumber: tenant.contractNumber || generateContractNumber(),
+          paymentFrequency: tenant.paymentFrequency || "monthly",
           newTenantName: "",
           newTenantPhone: "",
           newTenantSex: "",
@@ -670,7 +705,7 @@ export default function UnitsBuilderPage() {
     (
       unitId: string,
       patch: Partial<
-        Pick<UnitDraft, "tenantContactId" | "contractStartDate" | "contractEndDate" | "newTenantName" | "newTenantPhone" | "newTenantSex" | "newTenantIdNumber">
+        Pick<UnitDraft, "tenantContactId" | "contractId" | "contractNumber" | "paymentFrequency" | "contractStartDate" | "contractEndDate" | "newTenantName" | "newTenantPhone" | "newTenantSex" | "newTenantIdNumber">
       >,
     ) => {
       setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, ...patch } : u)));
@@ -706,7 +741,18 @@ export default function UnitsBuilderPage() {
       setTenantOptions((prev) => (prev.some((t) => t.id === opt.id) ? prev : [...prev, opt]));
       setUnits((prev) =>
         prev.map((row) =>
-          row.id === unitId ? { ...row, tenantContactId: opt.id, newTenantName: "", newTenantPhone: "", newTenantSex: "", newTenantIdNumber: "" } : row,
+          row.id === unitId
+            ? {
+                ...row,
+                tenantContactId: opt.id,
+                contractNumber: row.contractNumber || generateContractNumber(),
+                paymentFrequency: row.paymentFrequency || "monthly",
+                newTenantName: "",
+                newTenantPhone: "",
+                newTenantSex: "",
+                newTenantIdNumber: "",
+              }
+            : row,
         ),
       );
     },
@@ -969,7 +1015,14 @@ export default function UnitsBuilderPage() {
                   <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">اختر المستأجر</label>
                   <select
                     value={unit.tenantContactId}
-                    onChange={(e) => updateUnitTenant(unit.id, { tenantContactId: e.target.value })}
+                    onChange={(e) => {
+                      const tenantContactId = e.target.value;
+                      updateUnitTenant(unit.id, {
+                        tenantContactId,
+                        contractNumber: tenantContactId ? (unit.contractNumber || generateContractNumber()) : "",
+                        paymentFrequency: tenantContactId ? (unit.paymentFrequency || "monthly") : "monthly",
+                      });
+                    }}
                     disabled={!canMutate}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
                   >
@@ -1040,6 +1093,30 @@ export default function UnitsBuilderPage() {
                 ) : null}
                 {unit.tenantContactId ? (
                   <>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">رقم عقد الإيجار</label>
+                      <input
+                        type="text"
+                        value={unit.contractNumber}
+                        onChange={(e) => updateUnitTenant(unit.id, { contractNumber: e.target.value })}
+                        disabled={!canMutate}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">طريقة الدفع</label>
+                      <select
+                        value={unit.paymentFrequency || "monthly"}
+                        onChange={(e) => updateUnitTenant(unit.id, { paymentFrequency: e.target.value })}
+                        disabled={!canMutate}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-60 dark:border-indigo-800/50 dark:bg-[#102318] dark:text-white"
+                      >
+                        <option value="monthly">شهري</option>
+                        <option value="quarterly">ربع سنوي</option>
+                        <option value="half-yearly">نصف سنوي</option>
+                        <option value="yearly">سنوي</option>
+                      </select>
+                    </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">بداية العقد</label>
                       <input
