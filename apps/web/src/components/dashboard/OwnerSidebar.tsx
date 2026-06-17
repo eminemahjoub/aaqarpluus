@@ -27,7 +27,14 @@ interface DashboardSidebarProps {
   onToggleCollapse?: () => void;
 }
 
-const ownerMenuItems = [
+interface DashboardMenuItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  disabled?: boolean;
+}
+
+const ownerMenuItems: DashboardMenuItem[] = [
   { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
   { href: "/dashboard/properties", label: "العقارات", icon: Building2 },
   { href: "/dashboard/tasks", label: "المهام", icon: ClipboardList },
@@ -40,7 +47,7 @@ const ownerMenuItems = [
   { href: "/dashboard/contact", label: "تواصل معنا", icon: Phone },
 ];
 
-const agencyMenuItems = [
+const agencyMenuItems: DashboardMenuItem[] = [
   { href: "/agency", label: "المكتب", icon: LayoutDashboard },
   { href: "/agency/automation", label: "الأتمتة", icon: Zap, disabled: true },
   { href: "/agency/owners", label: "الملاك", icon: Users },
@@ -54,7 +61,7 @@ const agencyMenuItems = [
   { href: "/agency/profile", label: "الملف الشخصي", icon: UserCircle },
 ];
 
-const personalMenuItems = [
+const personalMenuItems: DashboardMenuItem[] = [
   { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
   { href: "/dashboard/properties", label: "عقاراتي", icon: Building2 },
   { href: "/dashboard/profile", label: "الملف الشخصي", icon: UserCircle },
@@ -116,21 +123,23 @@ export function DashboardSidebar({
 
           if (item.disabled) {
             return (
-              <button
+              <Link
                 key={item.href}
-                type="button"
-                disabled
+                href={item.href}
+                onClick={(event) => event.preventDefault()}
                 className={[
                   "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-white/40",
                   collapsed ? "justify-center px-2" : "",
                 ].join(" ")}
                 title={collapsed ? item.label : undefined}
+                aria-disabled="true"
+                tabIndex={-1}
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/40 flex-shrink-0">
                   <Icon className="h-5 w-5" aria-hidden />
                 </div>
                 {!collapsed && <span className="flex-1">{item.label}</span>}
-              </button>
+              </Link>
             );
           }
 
