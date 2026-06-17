@@ -41,6 +41,13 @@ export function generatePaymentSchedule(args: {
       case "ربع_سنوي":
         count = Math.max(1, Math.ceil(months / 3));
         break;
+      case "half-yearly":
+      case "semiannual":
+      case "half yearly":
+      case "نصف سنوي":
+      case "نصف_سنوي":
+        count = Math.max(1, Math.ceil(months / 6));
+        break;
       case "yearly":
       case "annual":
       case "سنوي":
@@ -75,6 +82,13 @@ export function generatePaymentSchedule(args: {
       case "ربع سنوي":
       case "ربع_سنوي":
         due.setMonth(start.getMonth() + i * 3);
+        break;
+      case "half-yearly":
+      case "semiannual":
+      case "half yearly":
+      case "نصف سنوي":
+      case "نصف_سنوي":
+        due.setMonth(start.getMonth() + i * 6);
         break;
       case "yearly":
       case "annual":
