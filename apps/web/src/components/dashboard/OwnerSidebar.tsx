@@ -121,33 +121,17 @@ export function DashboardSidebar({
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-          if (item.disabled) {
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={(event) => event.preventDefault()}
-                className={[
-                  "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-white/40",
-                  collapsed ? "justify-center px-2" : "",
-                ].join(" ")}
-                title={collapsed ? item.label : undefined}
-                aria-disabled="true"
-                tabIndex={-1}
-              >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/40 flex-shrink-0">
-                  <Icon className="h-5 w-5" aria-hidden />
-                </div>
-                {!collapsed && <span className="flex-1">{item.label}</span>}
-              </Link>
-            );
-          }
-
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={onClose}
+              onClick={(event) => {
+                if (item.disabled) {
+                  event.preventDefault();
+                  return;
+                }
+                onClose?.();
+              }}
               className={[
                 "group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200",
                 isActive
