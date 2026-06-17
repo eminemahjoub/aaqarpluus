@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
+import { generatePaymentSchedule } from "@/lib/auto-payments";
 import { useCanMutate } from "@/hooks/useCanMutate";
 
 type DbProperty = {
@@ -341,6 +342,13 @@ export default function UnitsBuilderPage() {
       const rent = Number(u.priceSar) || 0;
       if (rent <= 0) return;
       const contractNumber = u.contractNumber.trim() || generateContractNumber();
+      const generatedPayments = generatePaymentSchedule({
+        rent_total_sar: rent,
+        start_date: u.contractStartDate,
+        end_date: u.contractEndDate,
+        payment_frequency: u.paymentFrequency || "monthly",
+        installments_count: null,
+      });
       const payload = {
         property_id: propertyId,
         unit_id: u.id,
@@ -351,6 +359,7 @@ export default function UnitsBuilderPage() {
         payment_frequency: u.paymentFrequency || "monthly",
         extra: { contract_number: contractNumber },
         status: "active",
+        payments: generatedPayments,
       };
       if (u.contractId) {
         const res = await authFetch(`/api/contracts/${u.contractId}`, {

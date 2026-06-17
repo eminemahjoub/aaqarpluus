@@ -9,6 +9,7 @@ import { authFetch } from "@/lib/auth-fetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { onSyncEvent, broadcastSync } from "@/lib/sync-engine";
+import { generatePaymentSchedule } from "@/lib/auto-payments";
 
 type Renter = {
   id: string;
@@ -341,6 +342,14 @@ export default function AgencyRentersPage() {
     if (!rentAmount || Number(rentAmount) <= 0) { setFormError("الرجاء إدخال مبلغ الإيجار"); return; }
     if (!contractNumber.trim()) { setFormError("الرجاء إدخال رقم عقد الإيجار"); return; }
 
+    const generatedPayments = generatePaymentSchedule({
+      rent_total_sar: Number(rentAmount),
+      start_date: startDate,
+      end_date: endDate,
+      payment_frequency: paymentFrequency,
+      installments_count: installmentsCount ? Number(installmentsCount) : null,
+    });
+
     createContractMutation.mutate({
       contact_id: selectedRenter.id,
       property_id: propertyId,
@@ -353,6 +362,7 @@ export default function AgencyRentersPage() {
       notes: contractNotes || null,
       extra: { contract_number: contractNumber.trim() },
       status: "active",
+      payments: generatedPayments,
     });
   }
 

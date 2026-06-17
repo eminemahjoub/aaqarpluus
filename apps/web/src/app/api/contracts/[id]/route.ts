@@ -97,6 +97,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     await repo.update(id, updates);
+
+    if (Array.isArray(body.payments)) {
+      await ds.getRepository("ContractPayment").delete({ contract_id: id } as any);
+      const payRepo = ds.getRepository("ContractPayment");
+      for (const p of body.payments) {
+        if (!p?.due_date || Number(p?.amount_sar) <= 0) continue;
+        const payment = payRepo.create({
+          contract_id: id,
+          amount_sar: Number(p.amount_sar),
+          due_date: p.due_date,
+          status: p.status ?? "pending",
+          notes: p.notes ?? null,
+        } as any);
+        await payRepo.save(payment);
+      }
+    }
+
     const updated = await repo.findOne({ where: { id } as any });
 
     // Sync property status when contract status changes
