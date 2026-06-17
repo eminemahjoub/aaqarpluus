@@ -3502,6 +3502,20 @@ function PropertyCard({
   );
 }
 
+function unitComponentTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    living_room: "صالون",
+    bedroom: "غرفة نوم",
+    kitchen: "مطبخ",
+    bathroom: "حمام",
+    balcony: "بلكونة",
+    office: "مكتب",
+    storage: "مستودع",
+    maid_room: "غرفة خادمة",
+  };
+  return map[type] ?? type;
+}
+
 function PropertyDetail({
   property,
   onBack,
@@ -3585,6 +3599,20 @@ function PropertyDetail({
   const [unitContractMap, setUnitContractMap] = useState<
     Record<string, { status: string; tenantName: string; startDate: string; endDate: string; summary?: OwnerContractSummary | null }>
   >({});
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const selectedUnit = propertyUnits.find((unit) => unit.id === selectedUnitId) ?? null;
+  const selectedUnitContract = selectedUnit ? unitContractMap[selectedUnit.id] ?? null : null;
+  const selectedUnitImages = selectedUnit?.components.flatMap((component) => component.images ?? []).filter((image) => image.url) ?? [];
+  const selectedUnitStats = selectedUnit
+    ? {
+        bedrooms: selectedUnit.components.filter((component) => component.type === "bedroom").length,
+        bathrooms: selectedUnit.components.filter((component) => component.type === "bathroom").length,
+        livingRooms: selectedUnit.components.filter((component) => component.type === "living_room").length,
+        offices: selectedUnit.components.filter((component) => component.type === "office").length,
+        hasKitchen: selectedUnit.components.some((component) => component.type === "kitchen"),
+        hasBalcony: selectedUnit.components.some((component) => component.type === "balcony"),
+      }
+    : null;
   const [currentActiveContractId, setCurrentActiveContractId] = useState<string | null>(null);
   const [nextPaymentDate, setNextPaymentDate] = useState<string>("—");
   const [nextPaymentAmount, setNextPaymentAmount] = useState<number | null>(null);
@@ -4599,14 +4627,6 @@ function PropertyDetail({
                 const allImages = unit.components.flatMap((c) => c.images ?? []).filter((img) => img.url);
                 const contract = unitContractMap[unit.id];
                 const isOccupied = contract?.status === "active";
-                const compTypeLabel = (type: string) => {
-                  const map: Record<string, string> = {
-                    living_room: "صالون", bedroom: "غرفة نوم", kitchen: "مطبخ",
-                    bathroom: "حمام", balcony: "بلكونة", office: "مكتب",
-                    storage: "مستودع", maid_room: "غرفة خادمة",
-                  };
-                  return map[type] ?? type;
-                };
                 return (
                   <div
                     key={unit.id}
@@ -4661,7 +4681,13 @@ function PropertyDetail({
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h4 className="truncate font-bold text-gray-900 dark:text-white">{unit.label}</h4>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUnitId(unit.id)}
+                            className="truncate text-right font-bold text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400"
+                          >
+                            {unit.label}
+                          </button>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span
                               className={[
@@ -4763,7 +4789,7 @@ function PropertyDetail({
                                   )}
                                   <div className="min-w-0">
                                     <p className="truncate text-xs font-medium text-gray-900 dark:text-white">{comp.label}</p>
-                                    <p className="text-xs text-gray-400">{compTypeLabel(comp.type)}{comp.sizeM2 ? ` • ${comp.sizeM2} م²` : ""}</p>
+                                    <p className="text-xs text-gray-400">{unitComponentTypeLabel(comp.type)}{comp.sizeM2 ? ` • ${comp.sizeM2} م²` : ""}</p>
                                   </div>
                                 </div>
                               );
@@ -4778,9 +4804,171 @@ function PropertyDetail({
             </div>
           )}
         </div>
-      )}
+          )}
 
-      {activeTab === "contracts" && (
+          {selectedUnit && selectedUnitStats ? (
+            <Modal isOpen={true} onClose={() => setSelectedUnitId(null)} title={selectedUnit.label} size="lg">
+              <div className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">الحالة</p>
+                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                      {selectedUnitContract?.status === "active" ? "مؤجرة" : "شاغرة"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">السعر/الإيجار</p>
+                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                      {selectedUnit.price_sar > 0 ? `${selectedUnit.price_sar.toLocaleString()} ر.س` : "لم يحدد"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">نوع الوحدة</p>
+                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.unit_type ?? "—"}</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">المكوّنات</p>
+                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.components.length}</p>
+                  </div>
+                </div>
+
+                {selectedUnitImages.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">الصور</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                      {selectedUnitImages.slice(0, 8).map((image) => (
+                        <img
+                          key={image.id}
+                          src={image.url}
+                          alt={selectedUnit.label}
+                          className="h-28 w-full rounded-xl object-cover"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-sm text-gray-500 dark:border-emerald-800/30 dark:text-gray-400">
+                    لا توجد صور للوحدة.
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {selectedUnitStats.livingRooms > 0 && (
+                    <div className="rounded-xl border border-purple-100 bg-purple-50 p-3 dark:border-purple-900/30 dark:bg-purple-950/20">
+                      <p className="text-xs text-purple-700 dark:text-purple-300">صالونات</p>
+                      <p className="mt-1 font-semibold text-purple-950 dark:text-purple-100">{selectedUnitStats.livingRooms}</p>
+                    </div>
+                  )}
+                  {selectedUnitStats.bedrooms > 0 && (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/30 dark:bg-blue-950/20">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">غرف نوم</p>
+                      <p className="mt-1 font-semibold text-blue-950 dark:text-blue-100">{selectedUnitStats.bedrooms}</p>
+                    </div>
+                  )}
+                  {selectedUnitStats.bathrooms > 0 && (
+                    <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3 dark:border-cyan-900/30 dark:bg-cyan-950/20">
+                      <p className="text-xs text-cyan-700 dark:text-cyan-300">حمامات</p>
+                      <p className="mt-1 font-semibold text-cyan-950 dark:text-cyan-100">{selectedUnitStats.bathrooms}</p>
+                    </div>
+                  )}
+                  {selectedUnitStats.offices > 0 && (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-900/30 dark:bg-slate-950/20">
+                      <p className="text-xs text-slate-700 dark:text-slate-300">مساحات عمل</p>
+                      <p className="mt-1 font-semibold text-slate-950 dark:text-slate-100">{selectedUnitStats.offices}</p>
+                    </div>
+                  )}
+                  {selectedUnitStats.hasKitchen && (
+                    <div className="rounded-xl border border-orange-100 bg-orange-50 p-3 dark:border-orange-900/30 dark:bg-orange-950/20">
+                      <p className="text-xs text-orange-700 dark:text-orange-300">مطبخ</p>
+                      <p className="mt-1 font-semibold text-orange-950 dark:text-orange-100">متوفر</p>
+                    </div>
+                  )}
+                  {selectedUnitStats.hasBalcony && (
+                    <div className="rounded-xl border border-green-100 bg-green-50 p-3 dark:border-green-900/30 dark:bg-green-950/20">
+                      <p className="text-xs text-green-700 dark:text-green-300">بلكونة</p>
+                      <p className="mt-1 font-semibold text-green-950 dark:text-green-100">متوفرة</p>
+                    </div>
+                  )}
+                </div>
+
+                {selectedUnitContract ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-950/20">
+                    <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">العقد</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {!ownerHidesTenantPii ? (
+                        <div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">المستأجر</p>
+                          <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnitContract.tenantName}</p>
+                        </div>
+                      ) : selectedUnitContract.summary ? (
+                        <div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">ملخص العقد</p>
+                          <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                            يتبقى {formatDaysUntilAr(selectedUnitContract.summary.days_until_contract_end, "يتبقى")}
+                          </p>
+                        </div>
+                      ) : null}
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">تاريخ العقد</p>
+                        <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                          {selectedUnitContract.startDate} → {selectedUnitContract.endDate}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-emerald-800/30 dark:text-gray-400">
+                    لا يوجد عقد مرتبط بهذه الوحدة.
+                  </div>
+                )}
+
+                <div>
+                  <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">المكوّنات</p>
+                  {selectedUnit.components.length > 0 ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {selectedUnit.components.map((component) => {
+                        const image = component.images?.find((item) => item.url);
+                        return (
+                          <div
+                            key={component.id}
+                            className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]"
+                          >
+                            {image ? (
+                              <img
+                                src={image.url}
+                                alt={component.label}
+                                className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-xl dark:bg-indigo-900/20">
+                                {component.type === "bedroom" ? "🛏" : component.type === "bathroom" ? "🚿" : component.type === "kitchen" ? "🍳" : component.type === "living_room" ? "🛋" : component.type === "balcony" ? "🌿" : component.type === "office" ? "💼" : component.type === "storage" ? "📦" : "🏠"}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 dark:text-white">{component.label}</p>
+                              <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                                {unitComponentTypeLabel(component.type)}
+                                {component.sizeM2 ? ` • ${component.sizeM2} م²` : ""}
+                              </p>
+                              {component.description ? (
+                                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{component.description}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-sm text-gray-500 dark:border-emerald-800/30 dark:text-gray-400">
+                      لا توجد مكوّنات للوحدة.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Modal>
+          ) : null}
+
+          {activeTab === "contracts" && (
         <div className="space-y-4">
           {/* Contract History */}
           <div className="rounded-xl bg-white shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
