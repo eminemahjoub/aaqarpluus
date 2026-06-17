@@ -35,10 +35,10 @@ Update the agency renters page (`apps/web/src/app/agency/renters/page.tsx`) so e
 
 ### 2. Add payment links
 - If payment links already exist in another field/API, map that field into the renter card.
-- If no payment-link model exists, add a non-blocking UI placeholder:
+- If no payment-link model exists, add a non-blocking UI:
   - Button label: "وصلات الدفع"
   - Opens a small modal/table listing generated contract payments.
-  - Each payment row shows amount, due date, status, and a placeholder action/link.
+  - Each payment row shows amount, due date, status, and a read-only receipt/payment detail view.
 - Do not invent a real payment gateway integration unless the user confirms the provider.
 
 ### 3. Update the contract creation modal
@@ -90,8 +90,11 @@ Add a compact section under contact details:
 - `apps/web/src/app/api/contracts/route.ts` only if persisting `contract_number` outside `extra`
 - `apps/web/src/lib/db/entities/index.ts` only if adding payment-link/payment-method fields to `ContractPaymentSchema`
 
+## Decisions confirmed
+- Contract number is required when creating a contract.
+- "وصلات الدفع" means showing payment installments/receipts, not payment gateway links.
+- Half-yearly should be added as a payment frequency option.
+- Contract/payment data should be derived from existing contracts/payments APIs where possible.
+
 ## Risks / decisions needed
-- Should "رقم عقد الإيجار" be required?
-- What exactly is meant by "وصلات الدفع": payment installment links, downloadable receipts, or payment gateway links?
-- Should half-yearly payments be added as `half-yearly`?
-- Should contract/payment data be fetched from a new dedicated renters endpoint or derived from existing contracts/payments APIs?
+- Whether to persist contract number in `contracts.extra` first or add a real `contract_number` DB column immediately.
