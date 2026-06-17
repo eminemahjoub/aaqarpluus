@@ -74,6 +74,23 @@ export async function GET(req: NextRequest) {
     if (dateTo) qb = qb.andWhere("cp.due_date <= :dateTo", { dateTo });
 
     const payments = await qb.getMany();
+    const contractIds = Array.from(new Set((payments ?? []).map((p: any) => String(p.contract_id)).filter(Boolean)));
+    const receiptDocs = contractIds.length > 0
+      ? await ds.getRepository("Document")
+          .createQueryBuilder("d")
+          .where("d.category = :category", { category: "payment_receipt" })
+          .andWhere("d.contract_id IN (:...contractIds)", { contractIds })
+          .getMany()
+      : [];
+    const receiptByPaymentId = new Map<string, string>();
+    for (const doc of receiptDocs) {
+      const match = String((doc as any).file_name ?? "").match(/^receipt_([^_]+)_/);
+      if (match?.[1]) receiptByPaymentId.set(match[1], String((doc as any).public_url ?? ""));
+    }
+    const paymentsWithReceipts = (payments ?? []).map((payment: any) => ({
+      ...(payment as any),
+      receipt_url: receiptByPaymentId.get(String((payment as any).id)) ?? null,
+    }));
 
     if (ownerHidesTenantPii(user)) {
       if (!contractId) return ok({ summaries: [] });
@@ -87,7 +104,7 @@ export async function GET(req: NextRequest) {
       return ok({ summary });
     }
 
-    return ok(payments);
+    return ok(paymentsWithReceipts);
   } catch (err) {
     return serverError(err);
   }

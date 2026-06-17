@@ -59,6 +59,7 @@ type PaymentItem = {
   status: string;
   notes: string | null;
   created_at: string;
+  receipt_url?: string | null;
 };
 
 function toArabicFrequency(f: string | null) {
