@@ -140,6 +140,15 @@ export default function AgencyRentersPage() {
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "inactive">("all");
   const [syncTick, setSyncTick] = React.useState(0);
+  const [newRenter, setNewRenter] = React.useState({
+    name: "",
+    phone: "",
+    alternativePhone: "",
+    sex: "",
+    idNumber: "",
+    email: "",
+    notes: "",
+  });
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [selectedRenter, setSelectedRenter] = React.useState<Renter | null>(null);
@@ -206,6 +215,42 @@ export default function AgencyRentersPage() {
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
     staleTime: 10000,
+  });
+
+  const createRenterMutation = useMutation({
+    mutationFn: async () => {
+      const res = await authFetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newRenter.name.trim(),
+          phone: newRenter.phone.trim() || null,
+          alternative_phone: newRenter.alternativePhone.trim() || null,
+          email: newRenter.email.trim() || null,
+          sex: newRenter.sex.trim() || null,
+          id_number: newRenter.idNumber.trim() || null,
+          notes: newRenter.notes.trim() || null,
+          type: "tenant",
+          status: "active",
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "فشل إضافة المستأجر");
+      return j as Renter;
+    },
+    onSuccess: async () => {
+      setNewRenter({
+        name: "",
+        phone: "",
+        alternativePhone: "",
+        sex: "",
+        idNumber: "",
+        email: "",
+        notes: "",
+      });
+      await qc.invalidateQueries({ queryKey: ["agency", "renters"] });
+      broadcastSync("contacts:mutated");
+    },
   });
 
   const propertiesQuery = useQuery({
@@ -328,6 +373,20 @@ export default function AgencyRentersPage() {
     );
   }
 
+  async function handleAddRenter(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newRenter.name.trim()) {
+      setFormError("اسم المستأجر مطلوب");
+      return;
+    }
+    setFormError(null);
+    try {
+      await createRenterMutation.mutateAsync();
+    } catch (e: any) {
+      setFormError(e?.message ?? "فشل إضافة المستأجر");
+    }
+  }
+
   function resetForm() {
     setPropertyId("");
     setUnitId("");
@@ -389,6 +448,88 @@ export default function AgencyRentersPage() {
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">قائمة بجميع المستأجرين المرتبطين بالمكتب</p>
       </div>
 
+      <div className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm dark:border-emerald-800/30 dark:bg-[#132a1f]">
+        <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">إضافة مستأجر جديد</h2>
+        <form onSubmit={(e) => void handleAddRenter(e)} className="grid gap-4 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">الاسم</label>
+            <input
+              value={newRenter.name}
+              onChange={(e) => setNewRenter({ ...newRenter, name: e.target.value })}
+              placeholder="اسم المستأجر"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">رقم الجوال</label>
+            <input
+              value={newRenter.phone}
+              onChange={(e) => setNewRenter({ ...newRenter, phone: e.target.value })}
+              placeholder="05xxxxxxxx"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">جوال بديل</label>
+            <input
+              value={newRenter.alternativePhone}
+              onChange={(e) => setNewRenter({ ...newRenter, alternativePhone: e.target.value })}
+              placeholder="05xxxxxxxx"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">الإيميل</label>
+            <input
+              value={newRenter.email}
+              onChange={(e) => setNewRenter({ ...newRenter, email: e.target.value })}
+              placeholder="email@example.com"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">الجنس</label>
+            <select
+              value={newRenter.sex}
+              onChange={(e) => setNewRenter({ ...newRenter, sex: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">— اختر الجنس —</option>
+              <option value="male">ذكر</option>
+              <option value="female">أنثى</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">رقم الهوية</label>
+            <input
+              value={newRenter.idNumber}
+              onChange={(e) => setNewRenter({ ...newRenter, idNumber: e.target.value })}
+              placeholder="رقم الهوية الوطنية"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">ملاحظات</label>
+            <input
+              value={newRenter.notes}
+              onChange={(e) => setNewRenter({ ...newRenter, notes: e.target.value })}
+              placeholder="ملاحظات اختيارية"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={createRenterMutation.isPending}
+              className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {createRenterMutation.isPending ? "جاري الإضافة..." : "إضافة المستأجر"}
+            </button>
+          </div>
+        </form>
+        {formError && createRenterMutation.isError ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p> : null}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -436,7 +577,7 @@ export default function AgencyRentersPage() {
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500 dark:border-emerald-800/30 dark:bg-[#132a1f] dark:text-gray-400">
           <User className="mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
           <p className="text-base font-medium text-gray-700 dark:text-gray-300">لا يوجد مستأجرين</p>
-          <p className="mt-1">يمكنك إضافة مستأجرين من صفحة جهات الاتصال.</p>
+          <p className="mt-1">أضف مستأجراً من النموذج أعلاه لتظهر بياناته وتفاصيله هنا.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

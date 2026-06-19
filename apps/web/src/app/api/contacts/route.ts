@@ -121,25 +121,28 @@ export async function POST(req: NextRequest) {
     const userType = String(user.userType ?? "");
     if (userType === "agency") {
       const ownerIdRaw = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
-      if (!ownerIdRaw) return badRequest("معرّف المالك مطلوب");
       const officeId = user.officeId ? String(user.officeId) : null;
-      if (officeId) {
-        const linked = await ds.query(
-          "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
-          [officeId, ownerIdRaw]
-        );
-        if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+      if (ownerIdRaw) {
+        if (officeId) {
+          const linked = await ds.query(
+            "SELECT 1 AS ok FROM office_owner_links WHERE office_id = $1 AND owner_id = $2 LIMIT 1",
+            [officeId, ownerIdRaw]
+          );
+          if (!Array.isArray(linked) || linked.length === 0) return unauthorized();
+        } else {
+          // Agency without office: verify owner was created by this agency
+          const ownerRow = await ds.query(
+            `SELECT 1 AS ok FROM users u
+             WHERE u.id = $1 AND u.created_by_agency_id = $2 AND u.deleted_at IS NULL
+             LIMIT 1`,
+            [ownerIdRaw, user.userId]
+          );
+          if (!Array.isArray(ownerRow) || ownerRow.length === 0) return unauthorized();
+        }
+        ownerId = ownerIdRaw;
       } else {
-        // Agency without office: verify owner was created by this agency
-        const ownerRow = await ds.query(
-          `SELECT 1 AS ok FROM users u
-           WHERE u.id = $1 AND u.created_by_agency_id = $2 AND u.deleted_at IS NULL
-           LIMIT 1`,
-          [ownerIdRaw, user.userId]
-        );
-        if (!Array.isArray(ownerRow) || ownerRow.length === 0) return unauthorized();
+        ownerId = String(user.userId);
       }
-      ownerId = ownerIdRaw;
     }
 
     const contact = repo.create({
