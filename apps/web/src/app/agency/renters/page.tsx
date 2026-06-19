@@ -527,7 +527,7 @@ export default function AgencyRentersPage() {
             </button>
           </div>
         </form>
-        {formError && createRenterMutation.isError ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p> : null}
+        {formError ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p> : null}
       </div>
 
       {/* Filters */}

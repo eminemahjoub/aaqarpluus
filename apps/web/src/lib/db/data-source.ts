@@ -39,7 +39,7 @@ export async function getDataSource(): Promise<DataSource> {
         password: process.env.DB_PASS ?? "postgres",
         database: process.env.DB_NAME ?? "property_crm",
         ssl: false,
-        synchronize: process.env.NODE_ENV === "development",
+        synchronize: process.env.DB_SYNCHRONIZE === "true",
         logging: process.env.NODE_ENV === "development" ? ["error"] : false,
         entities: [
           UserSchema,
