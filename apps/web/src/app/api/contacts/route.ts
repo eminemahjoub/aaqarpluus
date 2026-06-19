@@ -18,12 +18,37 @@ export async function GET(req: NextRequest) {
     const ds = await getDataSource();
     const userType = String(user.userType ?? "");
 
-    // For agencies: contacts where owner_id is the agency or an owner created by the agency.
+    // For agencies: contacts where owner_id is the agency, an owner created by the agency, or linked via office_owner_links.
     if (userType === "agency") {
       const agencyId = String(user.userId);
       const params: any[] = [agencyId];
       let idx = 2;
       let where = "";
+      const officeId = user.officeId ? String(user.officeId) : null;
+      const isOfficeLinked = officeId !== null;
+
+      let agencyOwnerFragment: string;
+      if (isOfficeLinked) {
+        params.push(officeId);
+        agencyOwnerFragment = `(c.owner_id = $1 OR EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = c.owner_id
+              AND u.created_by_agency_id = $1
+              AND u.deleted_at IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM office_owner_links ool
+            WHERE ool.office_id = $2 AND ool.owner_id = c.owner_id
+          ))`;
+        idx = 3;
+      } else {
+        agencyOwnerFragment = `(c.owner_id = $1 OR EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = c.owner_id
+              AND u.created_by_agency_id = $1
+              AND u.deleted_at IS NULL
+          ))`;
+      }
+
       if (type) {
         where += ` AND c.type = $${idx++}`;
         params.push(type);
@@ -37,12 +62,7 @@ export async function GET(req: NextRequest) {
       const baseQuery = `
         SELECT c.* FROM contacts c
         WHERE c.deleted_at IS NULL
-          AND (c.owner_id = $1 OR EXISTS (
-            SELECT 1 FROM users u
-            WHERE u.id = c.owner_id
-              AND u.created_by_agency_id = $1
-              AND u.deleted_at IS NULL
-          )) ${where}
+          AND ${agencyOwnerFragment} ${where}
         ORDER BY c.created_at DESC`;
 
       if (!page) {
@@ -55,12 +75,7 @@ export async function GET(req: NextRequest) {
 
       const countQuery = `SELECT COUNT(*)::int AS total FROM contacts c
         WHERE c.deleted_at IS NULL
-          AND (c.owner_id = $1 OR EXISTS (
-            SELECT 1 FROM users u
-            WHERE u.id = c.owner_id
-              AND u.created_by_agency_id = $1
-              AND u.deleted_at IS NULL
-          )) ${where}`;
+          AND ${agencyOwnerFragment} ${where}`;
       const totalRows = await ds.query(countQuery, params);
       const total = Number(totalRows?.[0]?.total ?? 0) || 0;
 
