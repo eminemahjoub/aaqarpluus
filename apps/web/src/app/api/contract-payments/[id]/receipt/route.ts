@@ -169,6 +169,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
   } catch (err) {
+    console.error("[receipt route] error:", err);
     return serverError(err);
   }
 }

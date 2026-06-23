@@ -120,6 +120,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const updated = await repo.findOne({ where: { id } as any });
     return ok(receiptDocument ? { payment: updated, receipt: receiptDocument } : updated);
   } catch (err) {
+    console.error("[contract-payments PUT] error:", err);
     return serverError(err);
   }
 }
@@ -154,6 +155,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await ds.getRepository("ContractPayment").delete(id);
     return ok({ success: true });
   } catch (err) {
+    console.error("[contract-payments DELETE] error:", err);
     return serverError(err);
   }
 }
