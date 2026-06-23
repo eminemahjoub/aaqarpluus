@@ -56,6 +56,7 @@ import {
   Sparkles,
   Search as SearchIcon,
   Image as ImageIcon,
+  ExternalLink,
 } from "lucide-react";
 
 // Saudi locations (lightweight, curated).
@@ -3537,6 +3538,7 @@ function PropertyDetail({
   ownerHidesTenantPii: boolean;
   userType: "owner" | "agency" | "personal";
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("info");
   const [selectedContractSummary, setSelectedContractSummary] = useState<OwnerContractSummary | null>(null);
   const [currentContractSummary, setCurrentContractSummary] = useState<OwnerContractSummary | null>(null);
@@ -3613,6 +3615,8 @@ function PropertyDetail({
     status: "vacant",
     area_sqm: "",
     description: "",
+    unit_type: "apartment",
+    floor: "",
   });
   const [savingUnit, setSavingUnit] = useState(false);
   const selectedUnit = propertyUnits.find((unit) => unit.id === selectedUnitId) ?? null;
@@ -3627,6 +3631,8 @@ function PropertyDetail({
       status: unit.status === "occupied" || unit.status === "rented" ? "occupied" : unit.status === "vacant" ? "vacant" : unit.status || "vacant",
       area_sqm: unit.area_sqm != null ? String(unit.area_sqm) : "",
       description: unit.description ?? "",
+      unit_type: unit.unit_type ?? "apartment",
+      floor: unit.floor ?? "",
     });
     setIsEditingUnit(false);
     setSelectedUnitId(unitId);
@@ -3651,6 +3657,8 @@ function PropertyDetail({
         status: unitEditForm.status,
         area_sqm: unitEditForm.area_sqm === "" ? null : Number(unitEditForm.area_sqm),
         description: unitEditForm.description.trim() || null,
+        unit_type: unitEditForm.unit_type || null,
+        floor: unitEditForm.floor.trim() || null,
       };
       const res = await authFetch(`/api/units/${selectedUnit.id}`, {
         method: "PUT",
@@ -4867,7 +4875,7 @@ function PropertyDetail({
             <Modal isOpen={true} onClose={() => { setSelectedUnitId(null); setIsEditingUnit(false); }} title={isEditingUnit ? `تعديل ${selectedUnit.label}` : selectedUnit.label} size="lg">
               <div className="space-y-5">
                 {canMutate && !isEditingUnit && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setIsEditingUnit(true)}
@@ -4875,6 +4883,21 @@ function PropertyDetail({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       تعديل الوحدة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedUnit) return;
+                        const href =
+                          userType === "agency"
+                            ? `/agency/properties/units?property_id=${property.id}&edit_unit_id=${selectedUnit.id}`
+                            : `/dashboard/properties/units?property_id=${property.id}&edit_unit_id=${selectedUnit.id}`;
+                        router.push(href);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      المحرر المتكامل
                     </button>
                   </div>
                 )}
@@ -4901,6 +4924,28 @@ function PropertyDetail({
                         <option value="vacant">شاغرة</option>
                         <option value="occupied">مؤجرة</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">نوع الوحدة</label>
+                      <select
+                        value={unitEditForm.unit_type}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, unit_type: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                      >
+                        <option value="apartment">شقة</option>
+                        <option value="shop">محل</option>
+                        <option value="other">أخرى</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">الطابق</label>
+                      <input
+                        type="text"
+                        value={unitEditForm.floor}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, floor: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        placeholder="مثال: 1"
+                      />
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">الإيجار (ر.س)</label>
@@ -4932,7 +4977,7 @@ function PropertyDetail({
                         placeholder="وصف الوحدة..."
                       />
                     </div>
-                    <div className="flex items-center gap-2 sm:col-span-2">
+                    <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                       <button
                         type="button"
                         disabled={savingUnit}
@@ -4953,6 +4998,22 @@ function PropertyDetail({
                         className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
                       >
                         إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingUnit}
+                        onClick={() => {
+                          if (!selectedUnit) return;
+                          const href =
+                            userType === "agency"
+                              ? `/agency/properties/units?property_id=${property.id}&edit_unit_id=${selectedUnit.id}`
+                              : `/dashboard/properties/units?property_id=${property.id}&edit_unit_id=${selectedUnit.id}`;
+                          router.push(href);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        فتح المحرر المتكامل
                       </button>
                     </div>
                   </div>

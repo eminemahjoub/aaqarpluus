@@ -327,6 +327,7 @@ export default function UnitsBuilderPage() {
   const [tenantOptions, setTenantOptions] = React.useState<TenantOption[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [units, setUnits] = React.useState<UnitDraft[]>([]);
+  const [editUnitId, setEditUnitId] = React.useState<string | null>(null);
   const totalUnitsRent = React.useMemo(() => units.reduce((acc, u) => acc + (u.priceSar ?? 0), 0), [units]);
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -481,9 +482,12 @@ export default function UnitsBuilderPage() {
   React.useEffect(() => {
     // Read property_id from query string on client (avoid useSearchParams suspense issues)
     try {
-      setPropertyId(new URLSearchParams(window.location.search).get("property_id"));
+      const params = new URLSearchParams(window.location.search);
+      setPropertyId(params.get("property_id"));
+      setEditUnitId(params.get("edit_unit_id"));
     } catch {
       setPropertyId(null);
+      setEditUnitId(null);
     }
   }, []);
 
@@ -673,13 +677,19 @@ export default function UnitsBuilderPage() {
       });
       setUnits(mapped);
       setLoading(false);
+      if (editUnitId) {
+        setTimeout(() => {
+          const el = document.getElementById(`unit-${editUnitId}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      }
     }
 
     void load();
     return () => {
       cancelled = true;
     };
-  }, [propertyId, refreshTick]);
+  }, [propertyId, refreshTick, editUnitId]);
 
   // Auto-save changes (best effort)
   React.useEffect(() => {
@@ -916,8 +926,9 @@ export default function UnitsBuilderPage() {
         <TenantCardPopup tenant={popupTenant} onClose={() => setPopupTenant(null)} />
         {units.map((unit) => (
           <details
+            id={`unit-${unit.id}`}
             key={unit.id}
-            className="group rounded-2xl border border-gray-200 bg-white p-4 dark:border-emerald-800/40 dark:bg-[#1a3528]"
+            className={`group rounded-2xl border bg-white p-4 dark:border-emerald-800/40 dark:bg-[#1a3528] ${unit.id === editUnitId ? "border-emerald-500 ring-2 ring-emerald-500/30" : "border-gray-200"}`}
             open
           >
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
