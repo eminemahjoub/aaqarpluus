@@ -51,10 +51,19 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
     throw new Error("تعذر الاتصال بالخادم");
   }
 
-  if (first.status !== 401) return first;
+  if (first.status !== 401 && first.status !== 403) return first;
 
-  const ok = await tryRefresh();
-  if (!ok) return first;
+  // 403 likely means CSRF token is missing/expired — refresh will set a new CSRF cookie
+  const refreshed = await tryRefresh();
+  if (!refreshed) return first;
+
+  // Re-read CSRF token after refresh may have set a new cookie
+  if (isMutation) {
+    const newToken = getCsrfToken();
+    if (newToken) {
+      headers.set("x-csrf-token", newToken);
+    }
+  }
 
   return fetch(input, {
     ...init,

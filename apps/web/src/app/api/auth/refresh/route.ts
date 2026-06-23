@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { ok, unauthorized, serverError, badRequest } from "@/lib/api-helpers";
-import { REFRESH_COOKIE, TOKEN_COOKIE, signAccessToken, signRefreshToken, verifyRefreshToken, serializeAuthCookie } from "@/lib/auth";
+import { REFRESH_COOKIE, TOKEN_COOKIE, signAccessToken, signRefreshToken, verifyRefreshToken, serializeAuthCookie, generateCsrfToken, serializeCsrfCookie } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     const res = ok({ accessToken });
     res.headers.append("Set-Cookie", serializeAuthCookie(TOKEN_COOKIE, accessToken, 15 * 60));
     res.headers.append("Set-Cookie", serializeAuthCookie(REFRESH_COOKIE, nextRefresh, 7 * 24 * 3600));
+    res.headers.append("Set-Cookie", serializeCsrfCookie(generateCsrfToken()));
     return res;
   } catch (err) {
     return serverError(err);
