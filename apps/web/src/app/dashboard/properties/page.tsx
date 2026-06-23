@@ -38,6 +38,8 @@ import {
   List,
   ArrowRight,
   Edit,
+  Pencil,
+  Save,
   Trash2,
   Printer,
   Download,
@@ -3594,15 +3596,41 @@ function PropertyDetail({
     unit_type?: string | null;
     price_sar: number;
     sort_order: number;
+    status?: string | null;
+    area_sqm?: number | null;
+    description?: string | null;
+    floor?: string | null;
     components: Array<{ id: string; type: string; label: string; sizeM2?: string; description?: string; images: Array<{ id: string; url?: string }> }>;
   }>>([]);
   const [unitContractMap, setUnitContractMap] = useState<
     Record<string, { status: string; tenantName: string; startDate: string; endDate: string; summary?: OwnerContractSummary | null }>
   >({});
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [isEditingUnit, setIsEditingUnit] = useState(false);
+  const [unitEditForm, setUnitEditForm] = useState({
+    label: "",
+    price_sar: "",
+    status: "vacant",
+    area_sqm: "",
+    description: "",
+  });
+  const [savingUnit, setSavingUnit] = useState(false);
   const selectedUnit = propertyUnits.find((unit) => unit.id === selectedUnitId) ?? null;
   const selectedUnitContract = selectedUnit ? unitContractMap[selectedUnit.id] ?? null : null;
   const selectedUnitImages = selectedUnit?.components.flatMap((component) => component.images ?? []).filter((image) => image.url) ?? [];
+  const openUnitModal = React.useCallback((unitId: string) => {
+    const unit = propertyUnits.find((u) => u.id === unitId);
+    if (!unit) return;
+    setUnitEditForm({
+      label: unit.label,
+      price_sar: unit.price_sar > 0 ? String(unit.price_sar) : "",
+      status: unit.status === "occupied" || unit.status === "rented" ? "occupied" : unit.status === "vacant" ? "vacant" : unit.status || "vacant",
+      area_sqm: unit.area_sqm != null ? String(unit.area_sqm) : "",
+      description: unit.description ?? "",
+    });
+    setIsEditingUnit(false);
+    setSelectedUnitId(unitId);
+  }, [propertyUnits]);
   const selectedUnitStats = selectedUnit
     ? {
         bedrooms: selectedUnit.components.filter((component) => component.type === "bedroom").length,
@@ -3613,6 +3641,34 @@ function PropertyDetail({
         hasBalcony: selectedUnit.components.some((component) => component.type === "balcony"),
       }
     : null;
+  async function handleSaveUnit() {
+    if (!selectedUnit || !canMutate) return;
+    setSavingUnit(true);
+    try {
+      const body = {
+        label: unitEditForm.label.trim(),
+        rent_amount: unitEditForm.price_sar === "" ? null : Number(unitEditForm.price_sar),
+        status: unitEditForm.status,
+        area_sqm: unitEditForm.area_sqm === "" ? null : Number(unitEditForm.area_sqm),
+        description: unitEditForm.description.trim() || null,
+      };
+      const res = await authFetch(`/api/units/${selectedUnit.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "فشل حفظ الوحدة");
+      }
+      setIsEditingUnit(false);
+      bumpRefresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "حدث خطأ");
+    } finally {
+      setSavingUnit(false);
+    }
+  }
   const [currentActiveContractId, setCurrentActiveContractId] = useState<string | null>(null);
   const [nextPaymentDate, setNextPaymentDate] = useState<string>("—");
   const [nextPaymentAmount, setNextPaymentAmount] = useState<number | null>(null);
@@ -3905,6 +3961,10 @@ function PropertyDetail({
               unit_type: u.unit_type ? String(u.unit_type) : null,
               price_sar: Number(u.rent_amount) || 0,
               sort_order: 0,
+              status: u.status ? String(u.status) : null,
+              area_sqm: u.area_sqm != null ? Number(u.area_sqm) : null,
+              description: u.description ? String(u.description) : null,
+              floor: u.floor ? String(u.floor) : null,
               components: Object.entries(componentsByCompId).map(([cid, imgs]) => ({
                 id: cid,
                 type: "gallery",
@@ -4630,7 +4690,8 @@ function PropertyDetail({
                 return (
                   <div
                     key={unit.id}
-                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-emerald-800/30 dark:bg-[#132a1f]"
+                    onClick={() => openUnitModal(unit.id)}
+                    className="cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md dark:border-emerald-800/30 dark:bg-[#132a1f]"
                   >
                     {/* Unit image gallery or placeholder */}
                     {allImages.length > 0 ? (
@@ -4681,13 +4742,9 @@ function PropertyDetail({
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedUnitId(unit.id)}
-                            className="truncate text-right font-bold text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400"
-                          >
+                          <span className="truncate text-right font-bold text-gray-900 dark:text-white">
                             {unit.label}
-                          </button>
+                          </span>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span
                               className={[
@@ -4807,30 +4864,122 @@ function PropertyDetail({
           )}
 
           {selectedUnit && selectedUnitStats ? (
-            <Modal isOpen={true} onClose={() => setSelectedUnitId(null)} title={selectedUnit.label} size="lg">
+            <Modal isOpen={true} onClose={() => { setSelectedUnitId(null); setIsEditingUnit(false); }} title={isEditingUnit ? `تعديل ${selectedUnit.label}` : selectedUnit.label} size="lg">
               <div className="space-y-5">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">الحالة</p>
-                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                      {selectedUnitContract?.status === "active" ? "مؤجرة" : "شاغرة"}
-                    </p>
+                {canMutate && !isEditingUnit && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingUnit(true)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-300"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      تعديل الوحدة
+                    </button>
                   </div>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">السعر/الإيجار</p>
-                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                      {selectedUnit.price_sar > 0 ? `${selectedUnit.price_sar.toLocaleString()} ر.س` : "لم يحدد"}
-                    </p>
+                )}
+
+                {isEditingUnit ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">اسم الوحدة</label>
+                      <input
+                        type="text"
+                        value={unitEditForm.label}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, label: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        placeholder="مثال: شقة 1"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">الحالة</label>
+                      <select
+                        value={unitEditForm.status}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, status: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                      >
+                        <option value="vacant">شاغرة</option>
+                        <option value="occupied">مؤجرة</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">الإيجار (ر.س)</label>
+                      <input
+                        type="number"
+                        value={unitEditForm.price_sar}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, price_sar: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        placeholder="10000"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">المساحة (م²)</label>
+                      <input
+                        type="number"
+                        value={unitEditForm.area_sqm}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, area_sqm: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        placeholder="120"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">الوصف</label>
+                      <textarea
+                        rows={2}
+                        value={unitEditForm.description}
+                        onChange={(e) => setUnitEditForm((f) => ({ ...f, description: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        placeholder="وصف الوحدة..."
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 sm:col-span-2">
+                      <button
+                        type="button"
+                        disabled={savingUnit}
+                        onClick={() => void handleSaveUnit()}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                      >
+                        {savingUnit ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        حفظ
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingUnit}
+                        onClick={() => setIsEditingUnit(false)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
                   </div>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">نوع الوحدة</p>
-                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.unit_type ?? "—"}</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">الحالة</p>
+                      <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                        {selectedUnitContract?.status === "active" ? "مؤجرة" : "شاغرة"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">السعر/الإيجار</p>
+                      <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                        {selectedUnit.price_sar > 0 ? `${selectedUnit.price_sar.toLocaleString()} ر.س` : "لم يحدد"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">نوع الوحدة</p>
+                      <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.unit_type ?? "—"}</p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">المكوّنات</p>
+                      <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.components.length}</p>
+                    </div>
                   </div>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-emerald-800/20 dark:bg-[#0f1e14]">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">المكوّنات</p>
-                    <p className="mt-1 font-semibold text-gray-900 dark:text-white">{selectedUnit.components.length}</p>
-                  </div>
-                </div>
+                )}
 
                 {selectedUnitImages.length > 0 ? (
                   <div>
