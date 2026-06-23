@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   Phone, User, Search, Filter, MessageSquare, FileText, Calendar, Mail, Shield, IdCard,
-  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download
+  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download, Send
 } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -111,6 +111,30 @@ function getContractNumber(contract: ContractItem | null) {
     return String((extra as { contract_number?: unknown }).contract_number ?? "");
   }
   return "";
+}
+
+function normalizeSaudiPhone(phone: string | null): string {
+  if (!phone) return "";
+  let p = phone.replace(/[\s\-+]/g, "");
+  if (p.startsWith("966")) p = "0" + p.slice(3);
+  if (p.startsWith("5")) p = "0" + p;
+  if (/^0\d{9}$/.test(p)) return p;
+  return "";
+}
+
+function buildWhatsAppReceiptMessage(renterName: string, amount: string, dueDate: string, receiptUrl: string): string {
+  return `السلام عليكم ${renterName}\n\nتم إصدار سند قبض بمبلغ ${amount} ر.س\nتاريخ الاستحقاق: ${dueDate}\n\nيمكنكم عرض السند عبر الرابط:\n${receiptUrl}`;
+}
+
+function openWhatsApp(phone: string, message: string) {
+  const normalized = normalizeSaudiPhone(phone);
+  if (!normalized) {
+    alert("رقم الجوال غير صحيح");
+    return;
+  }
+  const international = "966" + normalized.slice(1);
+  const url = `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
+  window.open(url, "_blank");
 }
 
 function getActiveContractForRenter(contracts: ContractItem[], renterId: string) {
@@ -687,13 +711,24 @@ export default function AgencyRentersPage() {
                               <span>جميع الدفعات مسددة</span>
                             </div>
                           ) : null}
-                          <button
-                            type="button"
-                            onClick={() => setPaymentsModalContract(contract)}
-                            className="w-full rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                          >
-                            عرض وصلات الدفع
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPaymentsModalContract(contract)}
+                              className="flex-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                            >
+                              وصلات الدفع
+                            </button>
+                            <a
+                              href={`/api/contracts/${contract.id}/lease`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-1 rounded-lg border border-blue-200 px-3 py-2 text-center text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800/40 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                            >
+                              <FileText className="ml-1 inline h-3.5 w-3.5" />
+                              عقد إيجار
+                            </a>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
@@ -774,27 +809,64 @@ export default function AgencyRentersPage() {
                     {selectedPaymentContract.payments.map((payment, index) => (
                       <tr key={payment.id}>
                         <td className="px-4 py-3">
-                          <a
-                            href={`/api/contract-payments/${payment.id}/receipt`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            سند قبض
-                          </a>
+                          <div className="flex items-center gap-1.5">
+                            <a
+                              href={`/api/contract-payments/${payment.id}/receipt`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              سند قبض
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const renter = renters.find((r) => r.id === selectedPaymentContract?.contract.contact_id);
+                                const phone = renter?.phone ?? "";
+                                if (!phone) { alert("لا يوجد رقم جوال لهذا المستأجر"); return; }
+                                const msg = buildWhatsAppReceiptMessage(
+                                  renter?.name ?? "",
+                                  formatCurrency(payment.amount_sar),
+                                  formatDate(payment.due_date),
+                                  `${window.location.origin}/api/contract-payments/${payment.id}/receipt`,
+                                );
+                                openWhatsApp(phone, msg);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-md bg-[#25D366] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1ebe5d]"
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              واتساب
+                            </button>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {payment.status === "paid" ? (
                             <span className="text-xs text-emerald-700 dark:text-emerald-300">تم الدفع</span>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => void markPaymentPaid(payment.id)}
-                              className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                            >
-                              دفع
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void markPaymentPaid(payment.id)}
+                                className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                              >
+                                دفع
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const renter = renters.find((r) => r.id === selectedPaymentContract?.contract.contact_id);
+                                  const phone = renter?.phone ?? "";
+                                  if (!phone) { alert("لا يوجد رقم جوال لهذا المستأجر"); return; }
+                                  const msg = `السلام عليكم ${renter?.name ?? ""}\n\nنذكركم بأن القسط المستحق بمبلغ ${formatCurrency(payment.amount_sar)} ر.س\nتاريخ الاستحقاق: ${formatDate(payment.due_date)}\n\nيرجى السداد في الموعد المحدد.\nشكراً لكم`;
+                                  openWhatsApp(phone, msg);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md bg-[#25D366] px-2 py-1.5 text-xs font-semibold text-white hover:bg-[#1ebe5d]"
+                              >
+                                <Send className="h-3 w-3" />
+                                تذكير
+                              </button>
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-gray-900 dark:text-white">

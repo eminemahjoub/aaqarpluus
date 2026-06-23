@@ -55,6 +55,13 @@ export function generateReceiptHtml(data: ReceiptData): string {
   const contractNumber = getContractNumber(contract);
   const payerName = escapeHtml(contact?.name ?? "");
   const amount = formatCurrencyAr((payment as any)?.amount_sar);
+  const rawAmount = Number((payment as any)?.amount_sar) || 0;
+  const vatRate = 15;
+  const vatAmount = rawAmount * (vatRate / 100);
+  const totalWithVat = rawAmount + vatAmount;
+  const subtotalFormatted = formatCurrencyAr(rawAmount);
+  const vatFormatted = formatCurrencyAr(vatAmount);
+  const totalFormatted = formatCurrencyAr(totalWithVat);
   const dueDate = formatDateAr((payment as any)?.due_date);
   const paidAt = formatDateAr((payment as any)?.paid_at);
   const paymentStatus = (payment as any)?.status === "paid" ? "مدفوع" : "غير مدفوع";
@@ -254,6 +261,42 @@ export function generateReceiptHtml(data: ReceiptData): string {
     border-radius: 20px;
     white-space: nowrap;
   }
+
+  /* VAT Summary */
+  .vat-summary {
+    background: #f7fafc;
+    border: 2px solid #1a365d;
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+  }
+  .vat-summary-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a365d;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #cbd5e0;
+  }
+  .vat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 14px;
+  }
+  .vat-row.total {
+    border-top: 2px solid #1a365d;
+    margin-top: 6px;
+    padding-top: 10px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #1a365d;
+  }
+  .vat-label { color: #4a5568; }
+  .vat-label-en { font-size: 11px; color: #a0aec0; direction: ltr; }
+  .vat-amount { font-weight: 700; color: #2d3748; }
+  .vat-amount.total { color: #1a365d; font-size: 18px; }
 
   /* Legal section */
   .legal-section { margin-bottom: 20px; }
@@ -468,6 +511,32 @@ export function generateReceiptHtml(data: ReceiptData): string {
         <div class="field-value">
           <span style="font-weight: 700; color: ${(payment as any)?.status === "paid" ? "#2f855a" : "#c53030"}">${paymentStatus}</span>
         </div>
+      </div>
+    </div>
+
+    <!-- VAT Summary -->
+    <div class="vat-summary">
+      <div class="vat-summary-title">ملخص الفاتورة / Invoice Summary</div>
+      <div class="vat-row">
+        <div>
+          <span class="vat-label">المبلغ قبل الضريبة</span>
+          <div class="vat-label-en">Subtotal (excl. VAT)</div>
+        </div>
+        <span class="vat-amount">${subtotalFormatted} ر.س</span>
+      </div>
+      <div class="vat-row">
+        <div>
+          <span class="vat-label">ضريبة القيمة المضافة (${vatRate}%)</span>
+          <div class="vat-label-en">VAT (${vatRate}%)</div>
+        </div>
+        <span class="vat-amount">${vatFormatted} ر.س</span>
+      </div>
+      <div class="vat-row total">
+        <div>
+          <span>الإجمالي شامل الضريبة</span>
+          <div class="vat-label-en">Total (incl. VAT)</div>
+        </div>
+        <span class="vat-amount total">${totalFormatted} ر.س</span>
       </div>
     </div>
 
