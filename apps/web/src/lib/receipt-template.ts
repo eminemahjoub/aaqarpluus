@@ -8,10 +8,11 @@ function escapeHtml(s: string | null | undefined): string {
     .replace(/'/g, "&#039;");
 }
 
-function formatDateAr(value: string | null | undefined): string {
+function formatDateAr(value: string | Date | null | undefined): string {
   if (!value) return "—";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
+  const str = value instanceof Date ? value.toISOString() : String(value);
+  const date = str.includes("T") ? new Date(str) : new Date(`${str}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return str;
   return date.toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" });
 }
 
