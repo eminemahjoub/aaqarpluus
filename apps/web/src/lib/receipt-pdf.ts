@@ -8,13 +8,21 @@ type ReceiptPdfInput = {
 };
 
 function loadFont(doc: PDFDocument): Promise<PDFFont> {
-  const fontPath = process.env.ARABIC_FONT_PATH ?? join("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf");
-  try {
-    const fontBytes = readFileSync(fontPath);
-    return doc.embedFont(fontBytes);
-  } catch {
-    return doc.embedFont(StandardFonts.Helvetica);
+  const fontPaths = [
+    process.env.ARABIC_FONT_PATH,
+    "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoKufiArabic-Regular.ttf",
+  ].filter(Boolean) as string[];
+  for (const fontPath of fontPaths) {
+    try {
+      const fontBytes = readFileSync(fontPath);
+      return doc.embedFont(fontBytes, { customName: "NotoArabic" });
+    } catch {
+      // try next path
+    }
   }
+  return doc.embedFont(StandardFonts.Helvetica);
 }
 
 function formatDate(value: string | null | undefined) {
