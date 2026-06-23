@@ -45,7 +45,9 @@ async function getCompanyInfo(ds: any, user: any): Promise<ReceiptData["company"
     try {
       const agencyId = String(user.userId);
       const userRow = await ds.query(
-        `SELECT u.full_name, u.phone, o.name AS office_name, o.phone AS office_phone, o.address AS office_address
+        `SELECT u.full_name, u.phone,
+                o.name AS office_name, o.phone AS office_phone, o.address AS office_address,
+                o.cr_number, o.vat_number, o.logo_url, o.description_ar, o.description_en
          FROM users u
          LEFT JOIN offices o ON o.id = u.office_id
          WHERE u.id = $1`,
@@ -56,14 +58,14 @@ async function getCompanyInfo(ds: any, user: any): Promise<ReceiptData["company"
         return {
           nameAr: row.office_name ?? row.full_name ?? envCompany.nameAr,
           nameEn: envCompany.nameEn,
-          descAr: envCompany.descAr,
-          descEn: envCompany.descEn,
+          descAr: row.description_ar ?? envCompany.descAr,
+          descEn: row.description_en ?? envCompany.descEn,
           phone: row.office_phone ?? row.phone ?? envCompany.phone,
-          cr: envCompany.cr,
-          vat: envCompany.vat,
+          cr: row.cr_number ?? envCompany.cr,
+          vat: row.vat_number ?? envCompany.vat,
           addressAr: row.office_address ?? envCompany.addressAr,
           addressEn: envCompany.addressEn,
-          logoUrl: envCompany.logoUrl,
+          logoUrl: row.logo_url ?? envCompany.logoUrl,
         };
       }
     } catch {
