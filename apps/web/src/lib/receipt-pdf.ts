@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 
 type ReceiptPdfInput = {
   contract: any;
@@ -79,6 +80,7 @@ function drawLabelValue(page: PDFPage, font: PDFFont, label: string, value: stri
 export async function createPaymentReceiptPdfBytes(input: ReceiptPdfInput) {
   const { contract, payment } = input;
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
   const font = await loadFont(pdfDoc);
   const page = pdfDoc.addPage([595.28, 841.89]);
   const { width, height } = page.getSize();
