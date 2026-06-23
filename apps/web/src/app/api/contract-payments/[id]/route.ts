@@ -38,6 +38,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const repo = ds.getRepository("ContractPayment");
     const propertyIds = await getAccessiblePropertyIds(ds, user);
 
+    // If agency has no accessible properties, deny early (avoids IN () SQL error)
+    if (Array.isArray(propertyIds) && propertyIds.length === 0) return unauthorized();
+
     // Verify ownership via contract join
     const payment = await ds
       .getRepository("ContractPayment")
@@ -67,46 +70,50 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const shouldBecomePaid = updates.status === "paid";
     let receiptDocument: any | null = null;
     if (shouldBecomePaid) {
-      await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
-        "payment_receipt",
-        `receipt_${id}_%`,
-      ]);
+      try {
+        await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
+          "payment_receipt",
+          `receipt_${id}_%`,
+        ]);
 
-      const contract = await ds
-        .getRepository("Contract")
-        .createQueryBuilder("c")
-        .leftJoinAndSelect("c.contact", "contact")
-        .leftJoinAndSelect("c.property", "property")
-        .leftJoinAndSelect("c.unit", "unit")
-        .where("c.id = :id", { id: (payment as any).contract_id })
-        .getOne();
+        const contract = await ds
+          .getRepository("Contract")
+          .createQueryBuilder("c")
+          .leftJoinAndSelect("c.contact", "contact")
+          .leftJoinAndSelect("c.property", "property")
+          .leftJoinAndSelect("c.unit", "unit")
+          .where("c.id = :id", { id: (payment as any).contract_id })
+          .getOne();
 
-      if (contract) {
-        const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment });
-        const uploadsDir = join(process.cwd(), "public", "uploads", String((contract as any).owner_id));
-        await mkdir(uploadsDir, { recursive: true });
-        const contractNumber = contract.extra && typeof contract.extra === "object"
-          ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)
-          : contract.id;
-        const fileName = `receipt_${id}_${contractNumber}.pdf`;
-        const filePath = join(uploadsDir, fileName);
-        await writeFile(filePath, Buffer.from(pdfBytes));
-        const publicUrl = `/uploads/${(contract as any).owner_id}/${fileName}`;
-        const docRepo = ds.getRepository("Document");
-        receiptDocument = docRepo.create({
-          owner_id: (contract as any).owner_id,
-          property_id: (contract as any).property_id,
-          file_name: fileName,
-          mime_type: "application/pdf",
-          object_path: filePath,
-          public_url: publicUrl,
-          size_bytes: pdfBytes.length,
-          bucket: "local",
-          type: "pdf",
-          category: "payment_receipt",
-          contract_id: (contract as any).id,
-        } as any);
-        await docRepo.save(receiptDocument);
+        if (contract) {
+          const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment });
+          const uploadsDir = join(process.cwd(), "public", "uploads", String((contract as any).owner_id));
+          await mkdir(uploadsDir, { recursive: true });
+          const contractNumber = contract.extra && typeof contract.extra === "object"
+            ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)
+            : contract.id;
+          const fileName = `receipt_${id}_${contractNumber}.pdf`;
+          const filePath = join(uploadsDir, fileName);
+          await writeFile(filePath, Buffer.from(pdfBytes));
+          const publicUrl = `/uploads/${(contract as any).owner_id}/${fileName}`;
+          const docRepo = ds.getRepository("Document");
+          receiptDocument = docRepo.create({
+            owner_id: (contract as any).owner_id,
+            property_id: (contract as any).property_id,
+            file_name: fileName,
+            mime_type: "application/pdf",
+            object_path: filePath,
+            public_url: publicUrl,
+            size_bytes: pdfBytes.length,
+            bucket: "local",
+            type: "pdf",
+            category: "payment_receipt",
+            contract_id: (contract as any).id,
+          } as any);
+          await docRepo.save(receiptDocument);
+        }
+      } catch (receiptErr) {
+        console.error("[contract-payments] receipt generation failed:", receiptErr);
       }
     }
 
@@ -125,6 +132,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const ds = await getDataSource();
     const propertyIds = await getAccessiblePropertyIds(ds, user);
+
+    if (Array.isArray(propertyIds) && propertyIds.length === 0) return unauthorized();
 
     const payment = await ds
       .getRepository("ContractPayment")
