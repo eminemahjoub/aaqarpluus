@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { User, Phone, Mail, Building2, Edit2, Check, X, FileText, Hash, Image as ImageIcon } from "lucide-react";
+import { User, Phone, Mail, Building2, Edit2, Check, X, FileText, Hash, Image as ImageIcon, Upload } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { authFetch } from "@/lib/auth-fetch";
 
@@ -38,6 +38,8 @@ export function ProfileContent() {
     cr_number: "", vat_number: "", logo_url: "", description_ar: "", description_en: "",
   });
   const [officeForm, setOfficeForm] = React.useState<OfficeSettings>(office);
+  const [logoUploading, setLogoUploading] = React.useState(false);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     async function loadUser() {
@@ -106,6 +108,29 @@ export function ProfileContent() {
       }
     } finally {
       setOfficeSaving(false);
+    }
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await authFetch("/api/agency/office-settings/logo", {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const logoUrl = data.logo_url;
+        setOffice({ ...office, logo_url: logoUrl });
+        setOfficeForm({ ...officeForm, logo_url: logoUrl });
+      }
+    } finally {
+      setLogoUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
     }
   }
 
@@ -351,17 +376,35 @@ export function ProfileContent() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">رابط الشعار (Logo URL)</label>
-              {officeEdit ? (
-                <input type="text" value={officeForm.logo_url ?? ""} onChange={(e) => setOfficeForm({ ...officeForm, logo_url: e.target.value })} placeholder="/uploads/logo.png"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white" />
-              ) : (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-emerald-800/50 dark:bg-[#1a3528]">
-                  <ImageIcon className="h-4 w-4 text-gray-400" />
-                  <span className="text-gray-900 dark:text-white" dir="ltr">{office.logo_url || "—"}</span>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">شعار الشركة (Logo)</label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528]">
+                  {office.logo_url ? (
+                    <img src={office.logo_url} alt="logo" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-8 w-8 text-gray-300" />
+                  )}
                 </div>
-              )}
-              <p className="mt-1 text-xs text-gray-400">ضع رابط صورة الشعار ليظهر في السند</p>
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={logoUploading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {logoUploading ? "جاري الرفع..." : "رفع شعار"}
+                  </button>
+                  <p className="text-xs text-gray-400">PNG, JPG, WebP, SVG — الحد الأقصى 2 ميجابايت</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
