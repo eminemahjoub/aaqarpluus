@@ -774,19 +774,15 @@ export default function AgencyRentersPage() {
                     {selectedPaymentContract.payments.map((payment, index) => (
                       <tr key={payment.id}>
                         <td className="px-4 py-3">
-                          {payment.receipt_url ? (
-                            <a
-                              href={payment.receipt_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                              وصل PDF
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
+                          <a
+                            href={`/api/contract-payments/${payment.id}/receipt`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            سند قبض
+                          </a>
                         </td>
                         <td className="px-4 py-3">
                           {payment.status === "paid" ? (
