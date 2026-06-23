@@ -9,6 +9,7 @@ async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | 
   const userType = String(user.userType ?? "");
   if (userType !== "agency") return null;
   const agencyId = String(user.userId);
+  const officeId = user.officeId ? String(user.officeId) : null;
   const rows = await ds.query(
     `SELECT id FROM properties
      WHERE deleted_at IS NULL
@@ -17,8 +18,10 @@ async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | 
          WHERE u.id = owner_id
            AND u.created_by_agency_id = $1
            AND u.deleted_at IS NULL
-       ))`,
-    [agencyId]
+       )
+       ${officeId ? "OR EXISTS (SELECT 1 FROM office_property_links l WHERE l.property_id = properties.id AND l.office_id = $2)" : ""}
+       )`,
+    officeId ? [agencyId, officeId] : [agencyId]
   );
   const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
   return ids.length > 0 ? ids : [];
