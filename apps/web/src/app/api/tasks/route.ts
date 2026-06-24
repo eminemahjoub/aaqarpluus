@@ -58,9 +58,11 @@ const CreateTaskSchema = z.object({
   status: z.string().optional().nullable(),
   priority: z.string().optional().nullable(),
   cost_sar: z.union([z.number(), z.string()]).optional().nullable(),
+  type: z.string().optional().nullable(),
   property_id: UuidSchema.optional().nullable(),
   unit_id: UuidSchema.optional().nullable(),
   contact_id: UuidSchema.optional().nullable(),
+  tenant_id: UuidSchema.optional().nullable(),
   extra: z.any().optional().nullable(),
 });
 
@@ -71,13 +73,21 @@ export async function GET(req: NextRequest) {
 
     const ds = await getDataSource();
     const propertyIds = await getAccessiblePropertyIds(ds, user);
+    const { searchParams } = new URL(req.url);
+    const typeFilter = searchParams.get("type");
+
     let qb = ds
       .getRepository("Task")
       .createQueryBuilder("t")
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
+      .leftJoinAndSelect("t.tenant", "tenant")
       .orderBy("t.created_at", "DESC");
+
+    if (typeFilter) {
+      qb = qb.andWhere("t.type = :typeFilter", { typeFilter });
+    }
 
     if (Array.isArray(propertyIds)) {
       if (propertyIds.length === 0) return ok([]);
@@ -128,9 +138,11 @@ export async function POST(req: NextRequest) {
       status: body.status ?? "pending",
       priority: body.priority ?? "medium",
       cost_sar: body.cost_sar != null && String(body.cost_sar).trim() !== "" ? Number(body.cost_sar) : 0,
+      type: body.type ?? "task",
       property_id: body.property_id ?? null,
       unit_id: body.unit_id ?? null,
       contact_id: body.contact_id ?? null,
+      tenant_id: body.tenant_id ?? null,
       extra: body.extra && typeof body.extra === "object" ? body.extra : null,
     } as any);
 
@@ -143,6 +155,7 @@ export async function POST(req: NextRequest) {
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
+      .leftJoinAndSelect("t.tenant", "tenant")
       .where("t.id = :id", { id: (task as any).id })
       .getOne();
 

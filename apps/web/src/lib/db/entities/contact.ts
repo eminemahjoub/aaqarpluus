@@ -16,6 +16,7 @@ export const ContactSchema = schema({
     type: { type: "varchar", length: 50, default: "tenant" },
     sex: { type: "varchar", length: 20, nullable: true },
     id_number: { type: "varchar", length: 50, nullable: true },
+    pin_hash: { type: "varchar", length: 255, nullable: true },
     status: { type: "varchar", length: 50, default: "active" },
     deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },

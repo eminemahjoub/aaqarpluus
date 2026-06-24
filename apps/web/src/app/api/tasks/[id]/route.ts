@@ -59,9 +59,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "status",
       "priority",
       "cost_sar",
+      "type",
       "property_id",
       "unit_id",
       "contact_id",
+      "tenant_id",
       "extra",
     ];
     for (const f of fields) {
@@ -76,6 +78,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .leftJoinAndSelect("t.property", "property")
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
+      .leftJoinAndSelect("t.tenant", "tenant")
       .where("t.id = :id", { id })
       .getOne();
 

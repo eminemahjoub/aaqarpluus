@@ -124,9 +124,12 @@ export async function createRevenue(args: { ds: DataSource; user: any; body: any
   const revenue = repo.create({
     owner_id: ownerId,
     property_id: propertyId,
+    unit_id: body.unit_id ?? null,
     contract_id: body.contract_id ?? null,
+    contact_id: body.contact_id ?? null,
     type: body.type ?? null,
     amount_sar: Number(body.amount_sar) || 0,
+    payment_method: body.payment_method ?? null,
     received_at: body.received_at ?? new Date().toISOString(),
     description: body.description ?? null,
   } as any);
@@ -177,8 +180,11 @@ export async function createExpense(args: { ds: DataSource; user: any; body: any
   const expense = repo.create({
     owner_id: ownerId,
     property_id: propertyId,
+    unit_id: body.unit_id ?? null,
+    contact_id: body.contact_id ?? null,
     type: body.type ?? null,
     amount_sar: Number(body.amount_sar) || 0,
+    payment_method: body.payment_method ?? null,
     paid_at: body.paid_at ?? new Date().toISOString(),
     description: body.description ?? null,
   } as any);

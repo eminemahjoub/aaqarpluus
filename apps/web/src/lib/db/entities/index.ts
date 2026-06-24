@@ -259,6 +259,8 @@ export const TaskSchema = schema({
     property_id: { type: "uuid", nullable: true },
     unit_id: { type: "uuid", nullable: true },
     contact_id: { type: "uuid", nullable: true },
+    tenant_id: { type: "uuid", nullable: true },
+    type: { type: "varchar", length: 50, default: "task" },
     title: { type: "varchar", length: 255 },
     description: { type: "text", nullable: true },
     due_date: { type: "date", nullable: true },
@@ -276,6 +278,7 @@ export const TaskSchema = schema({
     property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
     unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
     contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
+    tenant: { type: "many-to-one", target: "Contact", joinColumn: { name: "tenant_id" }, nullable: true },
   },
 });
 
@@ -313,9 +316,12 @@ export const RevenueSchema = schema({
     id: { type: "uuid", primary: true, generated: "uuid" },
     owner_id: { type: "uuid" },
     property_id: { type: "uuid", nullable: true },
+    unit_id: { type: "uuid", nullable: true },
     contract_id: { type: "uuid", nullable: true },
+    contact_id: { type: "uuid", nullable: true },
     type: { type: "varchar", length: 100, nullable: true },
     amount_sar: { type: "numeric", precision: 14, scale: 2 },
+    payment_method: { type: "varchar", length: 100, nullable: true },
     received_at: { type: "timestamp", nullable: true },
     description: { type: "text", nullable: true },
     deleted_at: { type: "timestamp", nullable: true },
@@ -324,6 +330,8 @@ export const RevenueSchema = schema({
   relations: {
     owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
     property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
+    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
+    contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
   },
 });
 
@@ -357,9 +365,12 @@ export const ExpenseSchema = schema({
     id: { type: "uuid", primary: true, generated: "uuid" },
     owner_id: { type: "uuid" },
     property_id: { type: "uuid", nullable: true },
+    unit_id: { type: "uuid", nullable: true },
     related_revenue_id: { type: "uuid", nullable: true },
+    contact_id: { type: "uuid", nullable: true },
     type: { type: "varchar", length: 100, nullable: true },
     amount_sar: { type: "numeric", precision: 14, scale: 2 },
+    payment_method: { type: "varchar", length: 100, nullable: true },
     paid_at: { type: "timestamp", nullable: true },
     description: { type: "text", nullable: true },
     deleted_at: { type: "timestamp", nullable: true },
@@ -368,5 +379,7 @@ export const ExpenseSchema = schema({
   relations: {
     owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
     property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
+    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
+    contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
   },
 });

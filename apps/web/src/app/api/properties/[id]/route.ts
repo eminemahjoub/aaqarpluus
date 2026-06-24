@@ -74,6 +74,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const revenues = await ds
       .getRepository("Revenue")
       .createQueryBuilder("r")
+      .leftJoinAndSelect("r.contact", "contact")
+      .leftJoinAndSelect("r.unit", "unit")
       .where("r.property_id = :id", { id })
       .orderBy("r.created_at", "DESC")
       .getMany();
@@ -81,6 +83,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const expenses = await ds
       .getRepository("Expense")
       .createQueryBuilder("e")
+      .leftJoinAndSelect("e.contact", "contact")
+      .leftJoinAndSelect("e.unit", "unit")
       .where("e.property_id = :id", { id })
       .orderBy("e.created_at", "DESC")
       .getMany();

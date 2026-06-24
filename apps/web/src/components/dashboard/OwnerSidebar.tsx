@@ -19,6 +19,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Wallet,
+  Wrench,
 } from "lucide-react";
 interface DashboardSidebarProps {
   onClose?: () => void;
@@ -38,10 +40,12 @@ const ownerMenuItems: DashboardMenuItem[] = [
   { href: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
   { href: "/dashboard/properties", label: "العقارات", icon: Building2 },
   { href: "/dashboard/tasks", label: "المهام", icon: ClipboardList },
+  { href: "/dashboard/maintenance", label: "الصيانة", icon: Wrench },
   { href: "/dashboard/messages", label: "الرسائل", icon: MessageSquare },
   { href: "/dashboard/documents", label: "المستندات", icon: FolderOpen },
   { href: "/dashboard/agencies", label: "المكاتب", icon: Users },
   { href: "/dashboard/reports", label: "التقارير", icon: BarChart3 },
+  { href: "/dashboard/finance", label: "المالية", icon: Wallet },
   { href: "/dashboard/profile", label: "الملف الشخصي", icon: UserCircle },
   { href: "/dashboard/contact", label: "تواصل معنا", icon: Phone },
 ];

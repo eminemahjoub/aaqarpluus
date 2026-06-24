@@ -223,6 +223,7 @@ interface Revenue {
   status: "مسدد" | "غير مسدد" | "معلق";
   date: string;
   method: string;
+  notes?: string;
   contact?: string;
 }
 
@@ -2462,15 +2463,21 @@ function AddRevenueModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
     date: new Date().toISOString().split("T")[0],
     type: "إيجار",
     paymentMethod: "حوالة",
+    unit_id: "",
     contact_id: "",
     notes: "",
   });
   const [contacts, setContacts] = useState<Array<{ id: string; name: string }>>([]);
+  const [units, setUnits] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
     fetch("/api/contacts").then((r) => r.ok ? r.json() : []).then(setContacts).catch(() => {});
-  }, [isOpen]);
+    fetch(`/api/units?property_id=${encodeURIComponent(propertyId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setUnits(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [isOpen, propertyId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2481,10 +2488,13 @@ function AddRevenueModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           property_id: propertyId,
+          unit_id: formData.unit_id || null,
+          contact_id: formData.contact_id || null,
           type: formData.type,
           amount_sar: Number(formData.amount) || 0,
+          payment_method: formData.paymentMethod || null,
           received_at: formData.date ? new Date(formData.date).toISOString() : null,
-          description: [formData.notes, formData.paymentMethod].filter(Boolean).join(" - ") || null,
+          description: formData.notes || null,
         }),
       });
       onSuccess?.();
@@ -2547,16 +2557,29 @@ function AddRevenueModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
             </select>
           </div>
         </div>
-        <div>
-          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">جهة الاتصال</label>
-          <select
-            value={formData.contact_id}
-            onChange={(e) => setFormData({ ...formData, contact_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-          >
-            <option value="">— اختياري —</option>
-            {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الوحدة</label>
+            <select
+              value={formData.unit_id}
+              onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">— اختياري —</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">جهة الاتصال</label>
+            <select
+              value={formData.contact_id}
+              onChange={(e) => setFormData({ ...formData, contact_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">— اختياري —</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
         <div>
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">ملاحظات</label>
@@ -2586,15 +2609,21 @@ function AddExpenseModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
     date: new Date().toISOString().split("T")[0],
     type: "صيانة",
     paymentMethod: "حوالة",
+    unit_id: "",
     contact_id: "",
     notes: "",
   });
   const [contacts, setContacts] = useState<Array<{ id: string; name: string }>>([]);
+  const [units, setUnits] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
     fetch("/api/contacts").then((r) => r.ok ? r.json() : []).then(setContacts).catch(() => {});
-  }, [isOpen]);
+    fetch(`/api/units?property_id=${encodeURIComponent(propertyId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setUnits(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [isOpen, propertyId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2605,8 +2634,11 @@ function AddExpenseModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           property_id: propertyId,
+          unit_id: formData.unit_id || null,
+          contact_id: formData.contact_id || null,
           type: formData.type,
           amount_sar: Number(formData.amount) || 0,
+          payment_method: formData.paymentMethod || null,
           paid_at: formData.date ? new Date(formData.date).toISOString() : null,
           description: formData.notes || null,
         }),
@@ -2673,16 +2705,29 @@ function AddExpenseModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen: b
             </select>
           </div>
         </div>
-        <div>
-          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">جهة الاتصال</label>
-          <select
-            value={formData.contact_id}
-            onChange={(e) => setFormData({ ...formData, contact_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-          >
-            <option value="">— اختياري —</option>
-            {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">الوحدة</label>
+            <select
+              value={formData.unit_id}
+              onChange={(e) => setFormData({ ...formData, unit_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">— اختياري —</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">جهة الاتصال</label>
+            <select
+              value={formData.contact_id}
+              onChange={(e) => setFormData({ ...formData, contact_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+            >
+              <option value="">— اختياري —</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
         <div>
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">ملاحظات</label>
@@ -3920,11 +3965,13 @@ function PropertyDetail({
         setRevenues(
           rev.map((r: any) => ({
             id: String(r.id),
-            type: "إيراد",
+            type: String(r.type ?? "إيراد"),
             amount: Number(r.amount_sar) || 0,
             status: "مسدد",
             date: r.received_at ? String(r.received_at).split("T")[0] : "",
-            method: "—",
+            method: String(r.payment_method ?? "—"),
+            notes: String(r.description ?? ""),
+            contact: r.contact?.name ?? "—",
           })),
         );
         setExpenses(
@@ -3935,6 +3982,7 @@ function PropertyDetail({
             status: "مسدد",
             date: e.paid_at ? String(e.paid_at).split("T")[0] : "",
             notes: String(e.description ?? ""),
+            contact: e.contact?.name ?? "—",
           })),
         );
         // Load unit component images from backend
@@ -4562,7 +4610,7 @@ function PropertyDetail({
                 <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
                   {expenses.map((expense) => (
                     <tr key={expense.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
-                      <td className="px-4 py-3">-</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{expense.notes || "—"}</td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                           {expense.type}
@@ -4574,8 +4622,8 @@ function PropertyDetail({
                           {expense.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">-</td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{currentTenantName}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{expense.date || "—"}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">{expense.contact || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4613,7 +4661,7 @@ function PropertyDetail({
                 <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
                   {revenues.map((revenue) => (
                     <tr key={revenue.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
-                      <td className="px-4 py-3">-</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{revenue.notes || "—"}</td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                           {revenue.type}
@@ -4627,7 +4675,7 @@ function PropertyDetail({
                       </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{revenue.date}</td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white">{revenue.method}</td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{currentTenantName}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">{revenue.contact || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
