@@ -82,18 +82,43 @@ export async function POST(req: NextRequest) {
 
     await repo.save(task);
 
+    const property = await ds
+      .getRepository("Property")
+      .createQueryBuilder("p")
+      .where("p.id = :id", { id: c.property_id })
+      .getOne();
+    const p = property as any;
+    const agencyUserIds: string[] = [];
+    if (p?.managing_office_id) {
+      const members = await ds.query(
+        `SELECT id FROM users WHERE user_type = 'agency' AND office_id = $1 AND deleted_at IS NULL`,
+        [String(p.managing_office_id)]
+      );
+      for (const m of members ?? []) {
+        if (m.id) agencyUserIds.push(String(m.id));
+      }
+    }
+    if (agencyUserIds.length === 0 && p?.created_by_agency_id) {
+      agencyUserIds.push(String(p.created_by_agency_id));
+    }
+    if (agencyUserIds.length === 0 && c.owner_id) {
+      agencyUserIds.push(String(c.owner_id));
+    }
+
     const notifRepo = ds.getRepository("Notification");
-    await notifRepo.save(
-      notifRepo.create({
-        user_id: String(c.owner_id),
-        type: "maintenance",
-        title: "طلب صيانة جديد",
-        body: `${tenant.name}: ${parsed.data.title}`,
-        reference_id: String((task as any).id),
-        reference_type: "task",
-        is_read: false,
-      } as any)
-    );
+    for (const userId of agencyUserIds) {
+      await notifRepo.save(
+        notifRepo.create({
+          user_id: userId,
+          type: "maintenance",
+          title: "طلب صيانة جديد",
+          body: `${tenant.name}: ${parsed.data.title}`,
+          reference_id: String((task as any).id),
+          reference_type: "task",
+          is_read: false,
+        } as any)
+      );
+    }
 
     return created(task);
   } catch (err) {
