@@ -8,6 +8,7 @@ export { UserSchema } from "./user";
 export { PropertySchema } from "./property";
 export { ContactSchema } from "./contact";
 export { ContractSchema } from "./contract";
+export { NotificationSchema } from "./notification";
 
 // Inline schemas below will be progressively extracted into per-entity files.
 

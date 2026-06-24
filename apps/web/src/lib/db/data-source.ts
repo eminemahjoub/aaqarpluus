@@ -21,6 +21,7 @@ import {
   RevenueSchema,
   ExpenseSchema,
   PropertyImageSchema,
+  NotificationSchema,
 } from "./entities";
 
 let dataSource: DataSource | null = null;
@@ -63,6 +64,7 @@ export async function getDataSource(): Promise<DataSource> {
           RevenueSchema,
           ExpenseSchema,
           PropertyImageSchema,
+          NotificationSchema,
         ],
       });
 
