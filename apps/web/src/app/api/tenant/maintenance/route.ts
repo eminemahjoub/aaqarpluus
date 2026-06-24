@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     if (!contract) return badRequest("لا يوجد عقد ساري لإنشاء طلب صيانة");
 
-    const c = contract as any;
+    const c = contract as { owner_id?: string; property_id?: string; unit_id?: string };
     const repo = ds.getRepository("Task");
     const task = repo.create({
       owner_id: String(c.owner_id),
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       status: "pending",
       priority: parsed.data.priority ?? "medium",
       cost_sar: 0,
-    } as any);
+    });
 
     await repo.save(task);
 
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       .createQueryBuilder("p")
       .where("p.id = :id", { id: c.property_id })
       .getOne();
-    const p = property as any;
+    const p = property as { managing_office_id?: string; created_by_agency_id?: string };
     const agencyUserIds: string[] = [];
     if (p?.managing_office_id) {
       const members = await ds.query(
@@ -113,10 +113,10 @@ export async function POST(req: NextRequest) {
           type: "maintenance",
           title: "طلب صيانة جديد",
           body: `${tenant.name}: ${parsed.data.title}`,
-          reference_id: String((task as any).id),
+          reference_id: String((task as { id?: string }).id),
           reference_type: "task",
           is_read: false,
-        } as any)
+        })
       );
     }
 

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     if (!contact) return unauthorized();
 
-    const c = contact as any;
+    const c = contact as { id?: string; name?: string; phone?: string };
     const contract = await ds
       .getRepository("Contract")
       .createQueryBuilder("ct")
@@ -29,6 +29,18 @@ export async function GET(req: NextRequest) {
       .orderBy("ct.created_at", "DESC")
       .getOne();
 
+    const contractData = contract as {
+      id?: string;
+      property_id?: string;
+      property?: { name?: string };
+      unit_id?: string;
+      unit?: { label?: string };
+      start_date?: string;
+      end_date?: string;
+      rent_total_sar?: number;
+      status?: string;
+    };
+
     return ok({
       tenant: {
         id: String(c.id),
@@ -37,15 +49,15 @@ export async function GET(req: NextRequest) {
       },
       contract: contract
         ? {
-            id: String((contract as any).id),
-            propertyId: String((contract as any).property_id),
-            propertyName: String((contract as any).property?.name ?? "—"),
-            unitId: (contract as any).unit_id ? String((contract as any).unit_id) : null,
-            unitLabel: String((contract as any).unit?.label ?? "—"),
-            startDate: String((contract as any).start_date ?? "—"),
-            endDate: String((contract as any).end_date ?? "—"),
-            rentTotalSar: Number((contract as any).rent_total_sar) || 0,
-            status: String((contract as any).status ?? "—"),
+            id: String(contractData.id),
+            propertyId: String(contractData.property_id),
+            propertyName: String(contractData.property?.name ?? "—"),
+            unitId: contractData.unit_id ? String(contractData.unit_id) : null,
+            unitLabel: String(contractData.unit?.label ?? "—"),
+            startDate: String(contractData.start_date ?? "—"),
+            endDate: String(contractData.end_date ?? "—"),
+            rentTotalSar: Number(contractData.rent_total_sar) || 0,
+            status: String(contractData.status ?? "—"),
           }
         : null,
     });

@@ -52,13 +52,14 @@ async function upsertCommissionExpense(ds: DataSource, revenue: any) {
   const propertyId = revenue?.property_id ? String(revenue.property_id) : null;
   if (!propertyId) return;
 
-  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as Record<string, unknown> });
   if (!prop) return;
 
-  const managingOfficeId = (prop as any).managing_office_id ? String((prop as any).managing_office_id) : null;
+  const propData = prop as { managing_office_id?: string; commission_percent?: number | null };
+  const managingOfficeId = propData.managing_office_id ? String(propData.managing_office_id) : null;
   const percent =
-    (prop as any).commission_percent !== null && (prop as any).commission_percent !== undefined
-      ? Number((prop as any).commission_percent)
+    propData.commission_percent !== null && propData.commission_percent !== undefined
+      ? Number(propData.commission_percent)
       : 0;
   if (!managingOfficeId || !Number.isFinite(percent) || percent <= 0) return;
 
@@ -67,7 +68,7 @@ async function upsertCommissionExpense(ds: DataSource, revenue: any) {
   if (!Number.isFinite(commission) || commission <= 0) return;
 
   const expenseRepo = ds.getRepository("Expense");
-  const existing = await expenseRepo.findOne({ where: { related_revenue_id: String(revenue.id) } as any });
+  const existing = await expenseRepo.findOne({ where: { related_revenue_id: String(revenue.id) } as Record<string, unknown> });
   const payload = {
     owner_id: String(revenue.owner_id),
     property_id: propertyId,
@@ -76,10 +77,12 @@ async function upsertCommissionExpense(ds: DataSource, revenue: any) {
     amount_sar: commission,
     paid_at: revenue.received_at ?? new Date().toISOString(),
     description: `عمولة ${percent}%`,
-  } as any;
+  };
 
-  if (existing) await expenseRepo.update((existing as any).id, payload);
-  else await expenseRepo.save(expenseRepo.create(payload));
+  if (existing) {
+    const existingId = (existing as { id?: string }).id;
+    if (existingId) await expenseRepo.update(existingId, payload);
+  } else await expenseRepo.save(expenseRepo.create(payload));
 }
 
 export async function listRevenues(args: { ds: DataSource; user: any; reqUrl: string }) {
@@ -116,9 +119,9 @@ export async function createRevenue(args: { ds: DataSource; user: any; body: any
   const can = await assertCanAccessProperty(ds, user, propertyId);
   if (!can) throw unauthorized();
 
-  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as Record<string, unknown> });
   if (!prop) throw badRequest("العقار غير موجود");
-  const ownerId = String((prop as any).owner_id);
+  const ownerId = String((prop as { owner_id?: string }).owner_id);
 
   const repo = ds.getRepository("Revenue");
   const revenue = repo.create({
@@ -132,7 +135,7 @@ export async function createRevenue(args: { ds: DataSource; user: any; body: any
     payment_method: body.payment_method ?? null,
     received_at: body.received_at ?? new Date().toISOString(),
     description: body.description ?? null,
-  } as any);
+  });
   await repo.save(revenue);
   await upsertCommissionExpense(ds, revenue);
   return revenue;
@@ -172,9 +175,9 @@ export async function createExpense(args: { ds: DataSource; user: any; body: any
   const can = await assertCanAccessProperty(ds, user, propertyId);
   if (!can) throw unauthorized();
 
-  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+  const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as Record<string, unknown> });
   if (!prop) throw badRequest("العقار غير موجود");
-  const ownerId = String((prop as any).owner_id);
+  const ownerId = String((prop as { owner_id?: string }).owner_id);
 
   const repo = ds.getRepository("Expense");
   const expense = repo.create({
@@ -187,7 +190,7 @@ export async function createExpense(args: { ds: DataSource; user: any; body: any
     payment_method: body.payment_method ?? null,
     paid_at: body.paid_at ?? new Date().toISOString(),
     description: body.description ?? null,
-  } as any);
+  });
   await repo.save(expense);
   return expense;
 }

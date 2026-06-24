@@ -5,14 +5,15 @@ import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-hel
 async function assertCanAccessTask(ds: any, user: any, taskId: string) {
   const userType = String(user.userType ?? "");
   const repo = ds.getRepository("Task");
-  const task = await repo.findOne({ where: { id: taskId } as any });
+  const task = await repo.findOne({ where: { id: taskId } as Record<string, unknown> });
   if (!task) return false;
+  const typedTask = task as { owner_id?: string; property_id?: string };
   if (userType !== "agency") {
-    return String((task as any).owner_id) === String(user.userId);
+    return String(typedTask.owner_id) === String(user.userId);
   }
   const agencyId = String(user.userId);
   const officeId = user.officeId ? String(user.officeId) : null;
-  const pid = String((task as any).property_id ?? "");
+  const pid = String(typedTask.property_id ?? "");
   if (!pid) return false;
   if (officeId) {
     const linked = await ds.query(
@@ -46,7 +47,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const task = await repo.findOne({ where: { id } as any });
+    const task = await repo.findOne({ where: { id } as Record<string, unknown> });
     if (!task) return unauthorized();
     if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
 
@@ -97,7 +98,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const ds = await getDataSource();
     const repo = ds.getRepository("Task");
 
-    const task = await repo.findOne({ where: { id } as any });
+    const task = await repo.findOne({ where: { id } as Record<string, unknown> });
     if (!task) return unauthorized();
     if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
 

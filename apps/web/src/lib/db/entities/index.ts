@@ -9,72 +9,15 @@ export { PropertySchema } from "./property";
 export { ContactSchema } from "./contact";
 export { ContractSchema } from "./contract";
 export { NotificationSchema } from "./notification";
+export { RevenueSchema } from "./revenue";
+export { ExpenseSchema } from "./expense";
+export { TaskSchema } from "./task";
+export { OfficeSchema, OfficeOwnerLinkSchema, OfficePropertyLinkSchema } from "./office";
+export { UnitSchema } from "./unit";
+export { SubscriptionSchema } from "./subscription";
+export { AuditLogSchema } from "./audit-log";
 
 // Inline schemas below will be progressively extracted into per-entity files.
-
-export const OfficeSchema = schema({
-  name: "Office",
-  tableName: "offices",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    name: { type: "varchar", length: 255 },
-    phone: { type: "varchar", length: 50, nullable: true },
-    email: { type: "varchar", length: 255, nullable: true },
-    address: { type: "text", nullable: true },
-    license: { type: "varchar", length: 100, nullable: true },
-    cr_number: { type: "varchar", length: 20, nullable: true },
-    vat_number: { type: "varchar", length: 20, nullable: true },
-    logo_url: { type: "varchar", length: 500, nullable: true },
-    description_ar: { type: "varchar", length: 255, nullable: true },
-    description_en: { type: "varchar", length: 255, nullable: true },
-    is_active: { type: "boolean", default: true },
-    deleted_at: { type: "timestamp", nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-    updated_at: { type: "timestamp", updateDate: true },
-  },
-});
-
-export const SubscriptionSchema = schema({
-  name: "Subscription",
-  tableName: "subscriptions",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    user_id: { type: "uuid" },
-    plan: { type: "varchar", length: 30, default: "free" }, // free|basic|premium|enterprise
-    status: { type: "varchar", length: 30, default: "active" }, // active|expired|cancelled|trial
-    start_date: { type: "date" },
-    end_date: { type: "date", nullable: true },
-    max_properties: { type: "int", default: 5 },
-    max_units: { type: "int", default: 20 },
-    max_users: { type: "int", default: 1 },
-    price: { type: "numeric", precision: 10, scale: 2, default: 0 },
-    created_at: { type: "timestamp", createDate: true },
-    updated_at: { type: "timestamp", updateDate: true },
-  },
-  relations: {
-    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
-  },
-});
-
-export const AuditLogSchema = schema({
-  name: "AuditLog",
-  tableName: "audit_logs",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    user_id: { type: "uuid", nullable: true },
-    action: { type: "varchar", length: 50 },
-    entity_type: { type: "varchar", length: 100, nullable: true },
-    entity_id: { type: "varchar", length: 100, nullable: true },
-    changes: { type: "jsonb", nullable: true },
-    metadata: { type: "jsonb", nullable: true },
-    ip_address: { type: "varchar", length: 80, nullable: true },
-    user_agent: { type: "varchar", length: 500, nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-  },
-  relations: {
-    user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" }, nullable: true },
-  },
-});
 
 export const PlatformSettingSchema = schema({
   name: "PlatformSetting",
@@ -122,9 +65,9 @@ export const ConversationParticipantSchema = schema({
     is_muted: { type: "boolean", default: false },
   },
   indices: [
-    { name: "idx_conv_participants_conv", columns: ["conversation_id"] as any },
-    { name: "idx_conv_participants_user", columns: ["user_id"] as any },
-    { name: "ux_conv_participants_conv_user", columns: ["conversation_id", "user_id"] as any, unique: true },
+    { name: "idx_conv_participants_conv", columns: ["conversation_id"] as string[] },
+    { name: "idx_conv_participants_user", columns: ["user_id"] as string[] },
+    { name: "ux_conv_participants_conv_user", columns: ["conversation_id", "user_id"] as string[], unique: true },
   ],
   relations: {
     conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
@@ -154,7 +97,7 @@ export const MessageSchema = schema({
     updated_at: { type: "timestamp", updateDate: true },
   },
   indices: [
-    { name: "idx_messages_conv_created", columns: ["conversation_id", "created_at"] as any },
+    { name: "idx_messages_conv_created", columns: ["conversation_id", "created_at"] as string[] },
   ],
   relations: {
     conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
@@ -174,61 +117,13 @@ export const MessageNotificationSchema = schema({
     created_at: { type: "timestamp", createDate: true },
   },
   indices: [
-    { name: "idx_msg_notif_user_read", columns: ["user_id", "is_read"] as any },
-    { name: "idx_msg_notif_conv", columns: ["conversation_id"] as any },
+    { name: "idx_msg_notif_user_read", columns: ["user_id", "is_read"] as string[] },
+    { name: "idx_msg_notif_conv", columns: ["conversation_id"] as string[] },
   ],
   relations: {
     user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
     conversation: { type: "many-to-one", target: "Conversation", joinColumn: { name: "conversation_id" }, onDelete: "CASCADE" },
     message: { type: "many-to-one", target: "Message", joinColumn: { name: "message_id" }, onDelete: "CASCADE" },
-  },
-});
-
-export const OfficeOwnerLinkSchema = schema({
-  name: "OfficeOwnerLink",
-  tableName: "office_owner_links",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    office_id: { type: "uuid" },
-    owner_id: { type: "uuid" },
-    created_at: { type: "timestamp", createDate: true },
-  },
-});
-
-export const OfficePropertyLinkSchema = schema({
-  name: "OfficePropertyLink",
-  tableName: "office_property_links",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    office_id: { type: "uuid" },
-    owner_id: { type: "uuid" },
-    property_id: { type: "uuid" },
-    commission_percent: { type: "numeric", precision: 5, scale: 2, nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-  },
-});
-
-export const UnitSchema = schema({
-  name: "Unit",
-  tableName: "units",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    property_id: { type: "uuid" },
-    owner_id: { type: "uuid" },
-    label: { type: "varchar", length: 100 },
-    unit_type: { type: "varchar", length: 50, nullable: true },
-    floor: { type: "varchar", length: 50, nullable: true },
-    area_sqm: { type: "numeric", precision: 10, scale: 2, nullable: true },
-    rent_amount: { type: "numeric", precision: 14, scale: 2, nullable: true },
-    status: { type: "varchar", length: 50, default: "vacant" },
-    description: { type: "text", nullable: true },
-    deleted_at: { type: "timestamp", nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-    updated_at: { type: "timestamp", updateDate: true },
-  },
-  relations: {
-    property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" } },
-    owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
   },
 });
 
@@ -248,38 +143,6 @@ export const ContractPaymentSchema = schema({
   },
   relations: {
     contract: { type: "many-to-one", target: "Contract", joinColumn: { name: "contract_id" } },
-  },
-});
-
-export const TaskSchema = schema({
-  name: "Task",
-  tableName: "tasks",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    owner_id: { type: "uuid" },
-    property_id: { type: "uuid", nullable: true },
-    unit_id: { type: "uuid", nullable: true },
-    contact_id: { type: "uuid", nullable: true },
-    tenant_id: { type: "uuid", nullable: true },
-    type: { type: "varchar", length: 50, default: "task" },
-    title: { type: "varchar", length: 255 },
-    description: { type: "text", nullable: true },
-    due_date: { type: "date", nullable: true },
-    due_date_hijri: { type: "varchar", length: 20, nullable: true },
-    status: { type: "varchar", length: 50, default: "pending" },
-    priority: { type: "varchar", length: 50, default: "medium" },
-    cost_sar: { type: "numeric", precision: 14, scale: 2, default: 0 },
-    extra: { type: "jsonb", nullable: true },
-    deleted_at: { type: "timestamp", nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-    updated_at: { type: "timestamp", updateDate: true },
-  },
-  relations: {
-    owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
-    property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
-    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
-    contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
-    tenant: { type: "many-to-one", target: "Contact", joinColumn: { name: "tenant_id" }, nullable: true },
   },
 });
 
@@ -310,32 +173,6 @@ export const DocumentSchema = schema({
   },
 });
 
-export const RevenueSchema = schema({
-  name: "Revenue",
-  tableName: "revenues",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    owner_id: { type: "uuid" },
-    property_id: { type: "uuid", nullable: true },
-    unit_id: { type: "uuid", nullable: true },
-    contract_id: { type: "uuid", nullable: true },
-    contact_id: { type: "uuid", nullable: true },
-    type: { type: "varchar", length: 100, nullable: true },
-    amount_sar: { type: "numeric", precision: 14, scale: 2 },
-    payment_method: { type: "varchar", length: 100, nullable: true },
-    received_at: { type: "timestamp", nullable: true },
-    description: { type: "text", nullable: true },
-    deleted_at: { type: "timestamp", nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-  },
-  relations: {
-    owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
-    property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
-    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
-    contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
-  },
-});
-
 export const PropertyImageSchema = schema({
   name: "PropertyImage",
   tableName: "property_images",
@@ -356,31 +193,5 @@ export const PropertyImageSchema = schema({
     owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
     property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
     unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
-  },
-});
-
-export const ExpenseSchema = schema({
-  name: "Expense",
-  tableName: "expenses",
-  columns: {
-    id: { type: "uuid", primary: true, generated: "uuid" },
-    owner_id: { type: "uuid" },
-    property_id: { type: "uuid", nullable: true },
-    unit_id: { type: "uuid", nullable: true },
-    related_revenue_id: { type: "uuid", nullable: true },
-    contact_id: { type: "uuid", nullable: true },
-    type: { type: "varchar", length: 100, nullable: true },
-    amount_sar: { type: "numeric", precision: 14, scale: 2 },
-    payment_method: { type: "varchar", length: 100, nullable: true },
-    paid_at: { type: "timestamp", nullable: true },
-    description: { type: "text", nullable: true },
-    deleted_at: { type: "timestamp", nullable: true },
-    created_at: { type: "timestamp", createDate: true },
-  },
-  relations: {
-    owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
-    property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
-    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
-    contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
   },
 });

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     if (!contact) return unauthorized();
 
-    const c = contact as any;
+    const c = contact as { pin_hash?: string; id?: string; name?: string; owner_id?: string; phone?: string };
     if (!c.pin_hash) return badRequest("لم يتم تفعيل الدخول لهذا الحساب بعد");
 
     const valid = await bcrypt.compare(parsed.data.pin, c.pin_hash);

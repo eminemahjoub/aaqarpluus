@@ -48,9 +48,9 @@ export async function PUT(req: NextRequest) {
     const repo = ds.getRepository("Notification");
 
     if (parsed.data.all) {
-      await repo.update({ user_id: user.userId } as any, { is_read: true });
+      await repo.update({ user_id: user.userId } as Record<string, unknown>, { is_read: true });
     } else if (parsed.data.id) {
-      await repo.update({ id: parsed.data.id, user_id: user.userId } as any, { is_read: true });
+      await repo.update({ id: parsed.data.id, user_id: user.userId } as Record<string, unknown>, { is_read: true });
     }
 
     return ok({ success: true });

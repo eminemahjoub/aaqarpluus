@@ -124,9 +124,9 @@ export async function POST(req: NextRequest) {
     let ownerId = String(user.userId);
     if (String(user.userType ?? "") === "agency") {
       if (!propertyId) return badRequest("معرف العقار مطلوب");
-      const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
+      const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as Record<string, unknown> });
       if (!prop) return badRequest("العقار غير موجود");
-      ownerId = String((prop as any).owner_id);
+      ownerId = String((prop as { owner_id?: string }).owner_id);
     }
 
     const task = repo.create({
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
       contact_id: body.contact_id ?? null,
       tenant_id: body.tenant_id ?? null,
       extra: body.extra && typeof body.extra === "object" ? body.extra : null,
-    } as any);
+    });
 
     await repo.save(task);
 
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       .leftJoinAndSelect("t.unit", "unit")
       .leftJoinAndSelect("t.contact", "contact")
       .leftJoinAndSelect("t.tenant", "tenant")
-      .where("t.id = :id", { id: (task as any).id })
+      .where("t.id = :id", { id: (task as { id?: string }).id })
       .getOne();
 
     return created(saved);

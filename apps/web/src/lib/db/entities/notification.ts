@@ -19,8 +19,8 @@ export const NotificationSchema = schema({
     created_at: { type: "timestamp", createDate: true },
   },
   indices: [
-    { name: "idx_notif_user_read", columns: ["user_id", "is_read"] as any },
-    { name: "idx_notif_reference", columns: ["reference_id", "reference_type"] as any },
+    { name: "idx_notif_user_read", columns: ["user_id", "is_read"] as string[] },
+    { name: "idx_notif_reference", columns: ["reference_id", "reference_type"] as string[] },
   ],
   relations: {
     user: { type: "many-to-one", target: "User", joinColumn: { name: "user_id" } },
