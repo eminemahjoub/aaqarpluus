@@ -5,7 +5,6 @@ import { LogOut, Menu, MessageSquare, Bell } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { authFetch } from "@/lib/auth-fetch";
-import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { useNotifications } from "@/hooks/useNotifications";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
