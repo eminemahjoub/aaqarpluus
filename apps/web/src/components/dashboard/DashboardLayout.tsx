@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { LogOut, Menu, MessageSquare } from "lucide-react";
+import { LogOut, Menu, MessageSquare, Bell } from "lucide-react";
 import { DashboardSidebar } from "./OwnerSidebar";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { authFetch } from "@/lib/auth-fetch";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { useNotifications } from "@/hooks/useNotifications";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { OWNER_PROPERTIES_READ_ONLY_MESSAGE } from "@/lib/permissions";
@@ -22,6 +23,9 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
   const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const { totalUnread } = useUnreadCount();
+  const { notifications, unreadCount, markAsRead } = useNotifications();
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const notifRef = React.useRef<HTMLDivElement>(null);
   const showPropertiesReadOnlyBanner =
     resolvedRole === "owner" &&
     (pathname.startsWith("/dashboard/properties") || pathname.startsWith("/agency/properties"));
@@ -44,6 +48,16 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   async function handleLogout() {
@@ -121,6 +135,65 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
             <h1 className="text-lg font-semibold text-gray-700 dark:text-gray-200 lg:hidden">
               لوحة التحكم
             </h1>
+
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                onClick={() => setNotifOpen(!notifOpen)}
+                className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#102318] dark:text-gray-200 dark:hover:bg-white/5"
+                aria-label="الإشعارات"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
+              </button>
+              {notifOpen && (
+                <div className="absolute left-0 top-12 z-50 w-80 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-emerald-800/50 dark:bg-[#132a1f]">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-emerald-800/30">
+                    <span className="font-semibold text-gray-900 dark:text-white">الإشعارات</span>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => markAsRead()}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                      >
+                        تحديد الكل مقروء
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">لا توجد إشعارات</p>
+                    ) : (
+                      notifications.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            if (!n.is_read) markAsRead(n.id);
+                            if (n.reference_type === "task" && n.reference_id) {
+                              window.location.href = "/dashboard/maintenance";
+                            }
+                          }}
+                          className={`w-full border-b border-gray-100 px-4 py-3 text-right transition hover:bg-gray-50 dark:border-emerald-800/30 dark:hover:bg-[#1a3528] ${
+                            n.is_read ? "opacity-70" : "bg-indigo-50/30 dark:bg-indigo-900/10"
+                          }`}
+                        >
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{n.body}</p>
+                          <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
+                            {n.created_at ? String(n.created_at).split("T")[0] : ""}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <Link
               href={resolvedRole === "agency" ? "/agency/messages" : "/dashboard/messages"}

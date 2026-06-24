@@ -81,6 +81,20 @@ export async function POST(req: NextRequest) {
     } as any);
 
     await repo.save(task);
+
+    const notifRepo = ds.getRepository("Notification");
+    await notifRepo.save(
+      notifRepo.create({
+        user_id: String(c.owner_id),
+        type: "maintenance",
+        title: "طلب صيانة جديد",
+        body: `${tenant.name}: ${parsed.data.title}`,
+        reference_id: String((task as any).id),
+        reference_type: "task",
+        is_read: false,
+      } as any)
+    );
+
     return created(task);
   } catch (err) {
     return serverError(err);
