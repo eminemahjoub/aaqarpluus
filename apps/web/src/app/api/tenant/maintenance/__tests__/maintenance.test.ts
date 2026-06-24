@@ -127,8 +127,8 @@ vi.mock("@/lib/db/data-source", () => ({
   ),
 }));
 
-vi.mock("@/lib/tenant-auth", () => ({
-  verifyTenantToken: vi.fn(() =>
+vi.mock("@/lib/tenant-api-helpers", () => ({
+  getTenantFromRequest: vi.fn(() =>
     Promise.resolve({ tenantId: "tenant-1", email: "+966501234567", name: "Tenant User", userType: "tenant" })
   ),
 }));
