@@ -21,7 +21,6 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [resolvedRole, setResolvedRole] = React.useState<"owner" | "agency" | "personal">(role);
   const [loggingOut, setLoggingOut] = React.useState(false);
-  const { totalUnread } = useUnreadCount();
   const { notifications, unreadCount, markAsRead } = useNotifications();
   const [notifOpen, setNotifOpen] = React.useState(false);
   const notifRef = React.useRef<HTMLDivElement>(null);
@@ -175,6 +174,9 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
                             if (!n.is_read) markAsRead(n.id);
                             if (n.reference_type === "task" && n.reference_id) {
                               window.location.href = "/dashboard/maintenance";
+                            } else if (n.reference_type === "conversation" && n.reference_id) {
+                              window.location.href =
+                                resolvedRole === "agency" ? "/agency/messages" : "/dashboard/messages";
                             }
                           }}
                           className={`w-full border-b border-gray-100 px-4 py-3 text-right transition hover:bg-gray-50 dark:border-emerald-800/30 dark:hover:bg-[#1a3528] ${
@@ -200,11 +202,6 @@ export function DashboardLayout({ children, role = "personal" }: DashboardLayout
               aria-label="الرسائل"
             >
               <MessageSquare className="h-5 w-5" />
-              {totalUnread > 0 ? (
-                <span className="absolute -left-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
-                  {totalUnread > 99 ? "99+" : totalUnread}
-                </span>
-              ) : null}
             </Link>
 
             <ThemeToggle />
