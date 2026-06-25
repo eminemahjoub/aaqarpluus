@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Phone, MoreHorizontal, User } from "lucide-react";
+import { Phone, MoreHorizontal, User, Key } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
@@ -38,6 +38,11 @@ function toArabicType(db: ContactRow["type"]) {
 
 export function ContactsContent() {
   const [newContact, setNewContact] = React.useState({ name: "", phone: "", sex: "", idNumber: "", type: "مستأجر" });
+  const [passwordModal, setPasswordModal] = React.useState<{ open: boolean; contactId: string | null; password: string | null }>({
+    open: false,
+    contactId: null,
+    password: null,
+  });
 
   const refreshTick = useRealtimeRefresh();
   const qc = useQueryClient();
@@ -99,6 +104,18 @@ export function ContactsContent() {
     e.preventDefault();
     await addMutation.mutateAsync();
   }
+
+  const generatePasswordMutation = useMutation({
+    mutationFn: async (contactId: string) => {
+      const res = await authFetch(`/api/contacts/${contactId}/password`, { method: "POST" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "تعذّر إنشاء كلمة المرور");
+      return j as { password: string };
+    },
+    onSuccess: (data, contactId) => {
+      setPasswordModal({ open: true, contactId, password: data.password });
+    },
+  });
 
   if (contactsQuery.isLoading) return <PageLoading rows={6} />;
   if (contactsQuery.isError) return <ErrorState message={(contactsQuery.error as any)?.message ?? "تعذّر تحميل البيانات"} onRetry={() => contactsQuery.refetch()} />;
@@ -214,6 +231,16 @@ export function ContactsContent() {
                       <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                         <MoreHorizontal className="h-5 w-5" />
                       </button>
+                      {contact.type === "tenant" ? (
+                        <button
+                          onClick={() => generatePasswordMutation.mutate(contact.id)}
+                          disabled={generatePasswordMutation.isPending && generatePasswordMutation.variables === contact.id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+                        >
+                          <Key className="h-3 w-3" />
+                          كلمة مرور
+                        </button>
+                      ) : null}
                       <span className={`rounded-full px-2 py-0.5 text-xs ${toArabicType(contact.type) === "مستأجر" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : toArabicType(contact.type) === "مورد خدمة" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" : toArabicType(contact.type) === "مكتب" ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300" : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400"}`}>
                         {toArabicType(contact.type)}
                       </span>
@@ -246,6 +273,37 @@ export function ContactsContent() {
           </div>
         </div>
       </div>
+
+      {passwordModal.open && passwordModal.password ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg dark:bg-[#132a1f]">
+            <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-white">كلمة مرور المستأجر</h3>
+            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">شارك هذه الكلمة مع المستأجر. يمكنه تغييرها لاحقًا من بوابته.</p>
+            <div className="mb-6 rounded-lg bg-gray-100 p-4 text-center dark:bg-[#1a3528]">
+              <p className="select-all text-2xl font-mono font-bold tracking-widest text-gray-900 dark:text-white" dir="ltr">
+                {passwordModal.password}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPasswordModal({ open: false, contactId: null, password: null })}
+                className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                تم
+              </button>
+              <button
+                onClick={() => {
+                  if (passwordModal.contactId) generatePasswordMutation.mutate(passwordModal.contactId);
+                }}
+                disabled={generatePasswordMutation.isPending}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-emerald-800/50 dark:text-gray-300 dark:hover:bg-[#1a3528]"
+              >
+                إعادة إنشاء
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

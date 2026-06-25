@@ -54,12 +54,20 @@ export default function TenantDashboardPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">لوحة المستأجر</h1>
-          <Link
-            href="/tenant/maintenance"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-          >
-            طلب صيانة
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/tenant/profile"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:text-gray-300 dark:hover:bg-[#1a3528]"
+            >
+              الملف الشخصي
+            </Link>
+            <Link
+              href="/tenant/maintenance"
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+            >
+              طلب صيانة
+            </Link>
+          </div>
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
