@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
-import { authFetch } from "@/lib/auth-fetch";
 
 const links = [
   { href: "/#features", label: "الميزات" },
@@ -24,13 +23,15 @@ export function Navbar() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    authFetch("/api/auth/me")
+    fetch("/api/auth/me", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         setUser(data ?? null);
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        // Silently ignore expected 401s on public pages.
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   React.useEffect(() => {
