@@ -179,6 +179,7 @@ export default function AgencyRentersPage() {
   const [paymentsModalContract, setPaymentsModalContract] = React.useState<ContractItem | null>(null);
   const [detailsModalRenter, setDetailsModalRenter] = React.useState<Renter | null>(null);
   const [generatedPassword, setGeneratedPassword] = React.useState<string | null>(null);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
 
   // Contract form state
   const [propertyId, setPropertyId] = React.useState("");
@@ -338,7 +339,11 @@ export default function AgencyRentersPage() {
     },
     onSuccess: (data) => {
       setGeneratedPassword(data.password);
+      setPasswordError(null);
       qc.invalidateQueries({ queryKey: ["agency", "renters"] });
+    },
+    onError: (err) => {
+      setPasswordError(err instanceof Error ? err.message : "تعذّر إنشاء كلمة المرور");
     },
   });
 
@@ -623,7 +628,7 @@ export default function AgencyRentersPage() {
           {renters.map((r) => (
             <div
               key={r.id}
-              onClick={() => { setGeneratedPassword(null); setDetailsModalRenter(r); }}
+              onClick={() => { setGeneratedPassword(null); setPasswordError(null); setDetailsModalRenter(r); }}
               className="flex flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:shadow-md cursor-pointer dark:border-emerald-800/30 dark:bg-[#132a1f]"
             >
               {/* Header */}
@@ -1221,18 +1226,23 @@ export default function AgencyRentersPage() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">شارك هذا الرمز مع المستأجر. يمكنه تغييره لاحقًا من بوابته.</p>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {generatePasswordMutation.isPending ? "جاري إنشاء الرمز..." : "إنشاء رمز دخول للمستأجر"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); generatePasswordMutation.mutate(r.id); }}
-                        disabled={generatePasswordMutation.isPending}
-                        className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        إنشاء
-                      </button>
+                    <div className="space-y-3">
+                      {passwordError && (
+                        <p className="text-sm text-red-600 dark:text-red-400">{passwordError}</p>
+                      )}
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                          {generatePasswordMutation.isPending ? "جاري إنشاء الرمز..." : "إنشاء رمز دخول للمستأجر"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); generatePasswordMutation.mutate(r.id); }}
+                          disabled={generatePasswordMutation.isPending}
+                          className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          إنشاء
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

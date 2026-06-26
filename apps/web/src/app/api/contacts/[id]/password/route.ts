@@ -53,6 +53,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const contact = await assertCanAccessContact(ds, user, id);
     if (!contact) return unauthorized();
 
+    const c = contact as { pin_hash?: string | null };
+    if (c.pin_hash) {
+      return badRequest("رمز الدخول موجود بالفعل لهذا المستأجر.");
+    }
+
     const plainPassword = generatePassword();
     const hash = await bcrypt.hash(plainPassword, 10);
 

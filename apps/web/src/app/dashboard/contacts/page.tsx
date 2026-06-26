@@ -291,15 +291,6 @@ export function ContactsContent() {
               >
                 تم
               </button>
-              <button
-                onClick={() => {
-                  if (passwordModal.contactId) generatePasswordMutation.mutate(passwordModal.contactId);
-                }}
-                disabled={generatePasswordMutation.isPending}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-emerald-800/50 dark:text-gray-300 dark:hover:bg-[#1a3528]"
-              >
-                إعادة إنشاء
-              </button>
             </div>
           </div>
         </div>
