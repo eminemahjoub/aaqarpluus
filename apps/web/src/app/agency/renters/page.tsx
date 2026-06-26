@@ -177,6 +177,7 @@ export default function AgencyRentersPage() {
   const [modalOpen, setModalOpen] = React.useState(false);
   const [selectedRenter, setSelectedRenter] = React.useState<Renter | null>(null);
   const [paymentsModalContract, setPaymentsModalContract] = React.useState<ContractItem | null>(null);
+  const [detailsModalRenter, setDetailsModalRenter] = React.useState<Renter | null>(null);
 
   // Contract form state
   const [propertyId, setPropertyId] = React.useState("");
@@ -608,7 +609,8 @@ export default function AgencyRentersPage() {
           {renters.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-emerald-800/30 dark:bg-[#132a1f]"
+              onClick={() => setDetailsModalRenter(r)}
+              className="flex flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:shadow-md cursor-pointer dark:border-emerald-800/30 dark:bg-[#132a1f]"
             >
               {/* Header */}
               <div className="mb-4 flex items-start justify-between">
@@ -714,7 +716,7 @@ export default function AgencyRentersPage() {
                           <div className="flex gap-2">
                             <button
                               type="button"
-                              onClick={() => setPaymentsModalContract(contract)}
+                              onClick={(e) => { e.stopPropagation(); setPaymentsModalContract(contract); }}
                               className="flex-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
                             >
                               وصلات الدفع
@@ -723,6 +725,7 @@ export default function AgencyRentersPage() {
                               href={`/api/contracts/${contract.id}/lease`}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               className="flex-1 rounded-lg border border-blue-200 px-3 py-2 text-center text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800/40 dark:text-blue-300 dark:hover:bg-blue-900/30"
                             >
                               <FileText className="ml-1 inline h-3.5 w-3.5" />
@@ -745,7 +748,7 @@ export default function AgencyRentersPage() {
               <div className="mt-auto flex items-center gap-2 border-t border-gray-100 pt-4 dark:border-emerald-800/30">
                 <button
                   type="button"
-                  onClick={() => void handleMessage(r.id)}
+                  onClick={(e) => { e.stopPropagation(); void handleMessage(r.id); }}
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                 >
                   <MessageSquare className="h-4 w-4" />
@@ -753,7 +756,7 @@ export default function AgencyRentersPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => openContractModal(r)}
+                  onClick={(e) => { e.stopPropagation(); openContractModal(r); }}
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
                 >
                   <Plus className="h-4 w-4" />
@@ -1109,6 +1112,139 @@ export default function AgencyRentersPage() {
           </div>
         </div>
       )}
+
+      {/* Renter Details Modal */}
+      {detailsModalRenter && (() => {
+        const r = detailsModalRenter;
+        const contract = getActiveContractForRenter(contractsQuery.data ?? [], r.id);
+        const payments = contract ? paymentsByContract.get(contract.id) ?? [] : [];
+        const nextPayment = getNextPayment(payments);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setDetailsModalRenter(null)}>
+            <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-emerald-800/40 dark:bg-[#132a1f]" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">تفاصيل المستأجر</h2>
+                <button
+                  type="button"
+                  onClick={() => setDetailsModalRenter(null)}
+                  className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-400 dark:hover:bg-emerald-900/30 dark:hover:text-gray-200"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4 dark:bg-emerald-950/20">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    <User className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{r.name}</h3>
+                    <span className={[
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                      r.status === "active"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+                    ].join(" ")}>
+                      {toArabicStatus(r.status)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 text-sm">
+                  {r.phone ? (
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                      <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <span dir="ltr">{r.phone}</span>
+                    </div>
+                  ) : null}
+                  {r.alternative_phone ? (
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                      <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <span dir="ltr">{r.alternative_phone}</span>
+                    </div>
+                  ) : null}
+                  {r.email ? (
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                      <Mail className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <span>{r.email}</span>
+                    </div>
+                  ) : null}
+                  {r.id_number ? (
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                      <IdCard className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <span>رقم الهوية: {r.id_number}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                    <Shield className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                    <span>الجنس: {toArabicSex(r.sex)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Calendar className="h-4 w-4" />
+                    <span>تاريخ الإضافة: {new Date(r.created_at).toLocaleDateString("ar-SA")}</span>
+                  </div>
+                  {r.notes ? (
+                    <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
+                      <FileText className="mt-0.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                      <span>{r.notes}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {contract ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-4 text-sm dark:border-emerald-800/30 dark:bg-emerald-950/20">
+                    <h4 className="mb-3 font-bold text-gray-900 dark:text-white">العقد النشط</h4>
+                    <div className="space-y-2">
+                      {getContractNumber(contract) ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <FileText className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>رقم العقد: {getContractNumber(contract)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Calendar className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                        <span>{formatDate(contract.start_date)} – {formatDate(contract.end_date)}</span>
+                      </div>
+                      {contract.payment_frequency ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <Repeat className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>طريقة الدفع: {toArabicFrequency(contract.payment_frequency)}</span>
+                        </div>
+                      ) : null}
+                      {nextPayment ? (
+                        <div className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                          <Coins className="mt-0.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>القسط القادم: {formatCurrency(nextPayment.amount_sar)} بتاريخ {formatDate(nextPayment.due_date)}</span>
+                        </div>
+                      ) : payments.length > 0 ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <Coins className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>جميع الدفعات مسددة</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-500 dark:border-emerald-800/30 dark:bg-[#1a3528]">
+                    لا يوجد عقد نشط
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDetailsModalRenter(null)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/40 dark:bg-[#1a3528] dark:text-gray-300 dark:hover:bg-emerald-900/20"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
