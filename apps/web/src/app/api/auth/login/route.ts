@@ -62,37 +62,43 @@ export async function POST(req: NextRequest) {
           .getOne();
         if (contact) {
           const c = contact as { pin_hash?: string; id?: string; name?: string; phone?: string };
-          if (c.pin_hash && await bcrypt.compare(password, String(c.pin_hash))) {
-            const contract = await ds
-              .getRepository("Contract")
-              .createQueryBuilder("ct")
-              .where("ct.contact_id = :contactId", { contactId: c.id })
-              .andWhere("ct.status = :status", { status: "active" })
-              .andWhere("ct.deleted_at IS NULL")
-              .orderBy("ct.created_at", "DESC")
-              .getOne();
-            if (contract) {
-              const token = await signTenantToken({
-                tenantId: String(c.id),
-                email: String(c.phone),
-                name: String(c.name),
-                userType: "tenant",
-              });
-              const tenantResponse = ok({
-                user: {
-                  id: String(c.id),
-                  name: String(c.name),
-                  phone: String(c.phone),
-                  userType: "tenant",
-                },
-              });
-              tenantResponse.headers.append("Set-Cookie", serializeTenantCookie(token, 7 * 24 * 3600));
-              return tenantResponse;
-            }
+          if (!c.pin_hash) {
+            return badRequest("لم يتم تفعيل الدخول لهذا المستأجر بعد. أنشئ رمز دخول من صفحة المستأجرين.");
           }
+          const pinValid = await bcrypt.compare(password, String(c.pin_hash));
+          if (!pinValid) {
+            return badRequest("رمز الدخول غير صحيح.");
+          }
+          const contract = await ds
+            .getRepository("Contract")
+            .createQueryBuilder("ct")
+            .where("ct.contact_id = :contactId", { contactId: c.id })
+            .andWhere("ct.status = :status", { status: "active" })
+            .andWhere("ct.deleted_at IS NULL")
+            .orderBy("ct.created_at", "DESC")
+            .getOne();
+          if (!contract) {
+            return badRequest("لا يوجد عقد ساري مرتبط بهذا الرقم.");
+          }
+          const token = await signTenantToken({
+            tenantId: String(c.id),
+            email: String(c.phone),
+            name: String(c.name),
+            userType: "tenant",
+          });
+          const tenantResponse = ok({
+            user: {
+              id: String(c.id),
+              name: String(c.name),
+              phone: String(c.phone),
+              userType: "tenant",
+            },
+          });
+          tenantResponse.headers.append("Set-Cookie", serializeTenantCookie(token, 7 * 24 * 3600));
+          return tenantResponse;
         }
       }
-      return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
+      return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة.");
     }
     const u = user as {
       deleted_at?: string | null;
