@@ -54,10 +54,14 @@ export async function POST(req: NextRequest) {
       // Try tenant/renter login fallback when identifier is a phone number.
       const tenantPhone = normalizePhone(rawIdentifier);
       if (tenantPhone) {
+        const localPhone = tenantPhone.startsWith("+966") ? "0" + tenantPhone.slice(4) : tenantPhone;
         const contact = await ds
           .getRepository("Contact")
           .createQueryBuilder("c")
-          .where("c.phone = :phone OR c.alternative_phone = :phone", { phone: tenantPhone })
+          .where(
+            "c.phone IN (:...phones) OR c.alternative_phone IN (:...phones)",
+            { phones: [tenantPhone, localPhone] }
+          )
           .andWhere("c.deleted_at IS NULL")
           .getOne();
         if (contact) {
