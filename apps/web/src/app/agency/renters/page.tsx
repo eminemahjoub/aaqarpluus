@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   Phone, User, Search, Filter, MessageSquare, FileText, Calendar, Mail, Shield, IdCard,
-  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download, Send
+  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download, Send, Key
 } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -178,6 +178,7 @@ export default function AgencyRentersPage() {
   const [selectedRenter, setSelectedRenter] = React.useState<Renter | null>(null);
   const [paymentsModalContract, setPaymentsModalContract] = React.useState<ContractItem | null>(null);
   const [detailsModalRenter, setDetailsModalRenter] = React.useState<Renter | null>(null);
+  const [generatedPassword, setGeneratedPassword] = React.useState<string | null>(null);
 
   // Contract form state
   const [propertyId, setPropertyId] = React.useState("");
@@ -325,6 +326,19 @@ export default function AgencyRentersPage() {
     },
     onError: (err: Error) => {
       setFormError(err.message);
+    },
+  });
+
+  const generatePasswordMutation = useMutation({
+    mutationFn: async (contactId: string) => {
+      const res = await authFetch(`/api/contacts/${contactId}/password`, { method: "POST" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "تعذّر إنشاء كلمة المرور");
+      return j as { password: string };
+    },
+    onSuccess: (data) => {
+      setGeneratedPassword(data.password);
+      qc.invalidateQueries({ queryKey: ["agency", "renters"] });
     },
   });
 
@@ -609,7 +623,7 @@ export default function AgencyRentersPage() {
           {renters.map((r) => (
             <div
               key={r.id}
-              onClick={() => setDetailsModalRenter(r)}
+              onClick={() => { setGeneratedPassword(null); setDetailsModalRenter(r); }}
               className="flex flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:shadow-md cursor-pointer dark:border-emerald-800/30 dark:bg-[#132a1f]"
             >
               {/* Header */}
@@ -1190,6 +1204,37 @@ export default function AgencyRentersPage() {
                       <span>{r.notes}</span>
                     </div>
                   ) : null}
+                </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-800/30 dark:bg-indigo-950/20">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Key className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h4 className="font-bold text-gray-900 dark:text-white">رمز الدخول</h4>
+                  </div>
+                  {generatedPassword ? (
+                    <div className="space-y-3">
+                      <div className="rounded-lg bg-white p-3 text-center dark:bg-[#1a3528]">
+                        <p className="select-all text-2xl font-mono font-bold tracking-widest text-indigo-700 dark:text-indigo-300" dir="ltr">
+                          {generatedPassword}
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">شارك هذا الرمز مع المستأجر. يمكنه تغييره لاحقًا من بوابته.</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        {generatePasswordMutation.isPending ? "جاري إنشاء الرمز..." : "إنشاء رمز دخول للمستأجر"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); generatePasswordMutation.mutate(r.id); }}
+                        disabled={generatePasswordMutation.isPending}
+                        className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        إنشاء
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {contract ? (
