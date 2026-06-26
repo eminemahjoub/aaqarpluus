@@ -45,7 +45,9 @@ export function LoginForm() {
           ? "/admin"
           : ut === "agency"
             ? "/agency"
-            : "/dashboard";
+            : ut === "tenant"
+              ? "/tenant/dashboard"
+              : "/dashboard";
       // Force full navigation so auth cookie is applied.
       window.location.assign(nextPath);
     } catch {

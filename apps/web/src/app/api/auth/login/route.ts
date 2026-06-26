@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDataSource } from "@/lib/db/data-source";
 import { signAccessToken, signRefreshToken, TOKEN_COOKIE, REFRESH_COOKIE, serializeAuthCookie, generateCsrfToken, serializeCsrfCookie } from "@/lib/auth";
+import { signTenantToken, serializeTenantCookie } from "@/lib/tenant-auth";
 import { ok, badRequest, serverError } from "@/lib/api-helpers";
 import { z } from "zod";
 import { badZod } from "@/lib/validation";
@@ -50,6 +51,47 @@ export async function POST(req: NextRequest) {
     const user = await qb.getOne();
 
     if (!user) {
+      // Try tenant/renter login fallback when identifier is a phone number.
+      const tenantPhone = normalizePhone(rawIdentifier);
+      if (tenantPhone) {
+        const contact = await ds
+          .getRepository("Contact")
+          .createQueryBuilder("c")
+          .where("c.phone = :phone OR c.alternative_phone = :phone", { phone: tenantPhone })
+          .andWhere("c.deleted_at IS NULL")
+          .getOne();
+        if (contact) {
+          const c = contact as { pin_hash?: string; id?: string; name?: string; phone?: string };
+          if (c.pin_hash && await bcrypt.compare(password, String(c.pin_hash))) {
+            const contract = await ds
+              .getRepository("Contract")
+              .createQueryBuilder("ct")
+              .where("ct.contact_id = :contactId", { contactId: c.id })
+              .andWhere("ct.status = :status", { status: "active" })
+              .andWhere("ct.deleted_at IS NULL")
+              .orderBy("ct.created_at", "DESC")
+              .getOne();
+            if (contract) {
+              const token = await signTenantToken({
+                tenantId: String(c.id),
+                email: String(c.phone),
+                name: String(c.name),
+                userType: "tenant",
+              });
+              const tenantResponse = ok({
+                user: {
+                  id: String(c.id),
+                  name: String(c.name),
+                  phone: String(c.phone),
+                  userType: "tenant",
+                },
+              });
+              tenantResponse.headers.append("Set-Cookie", serializeTenantCookie(token, 7 * 24 * 3600));
+              return tenantResponse;
+            }
+          }
+        }
+      }
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
     const u = user as {
