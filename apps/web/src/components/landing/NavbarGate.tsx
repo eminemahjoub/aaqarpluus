@@ -9,6 +9,7 @@ export function NavbarGate() {
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/agency") ||
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/tenant") ||
     pathname.startsWith("/onboarding") ||
     pathname === "/v" ||
     pathname.startsWith("/v/");
