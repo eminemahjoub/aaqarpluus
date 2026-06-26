@@ -23,6 +23,7 @@ type Renter = {
   status: string;
   notes: string | null;
   created_at: string;
+  pin_hash?: string | null;
 };
 
 type PropertyItem = { id: string; name: string };
@@ -1224,6 +1225,14 @@ export default function AgencyRentersPage() {
                         </p>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">شارك هذا الرمز مع المستأجر. يمكنه تغييره لاحقًا من بوابته.</p>
+                    </div>
+                  ) : r.pin_hash ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300">تم تفعيل الدخول لهذا المستأجر.</p>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        <Key className="h-3 w-3" />
+                        مفعّل
+                      </span>
                     </div>
                   ) : (
                     <div className="space-y-3">
