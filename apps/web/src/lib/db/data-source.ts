@@ -24,6 +24,7 @@ import {
   NotificationSchema,
 } from "./entities";
 import { FinancialAndMaintenance20260625000000 } from "@/migrations/20260625000000FinancialAndMaintenance";
+import { AddContactPinPlain20260626000000 } from "@/migrations/20260626000000AddContactPinPlain";
 
 let dataSource: DataSource | null = null;
 let initPromise: Promise<DataSource> | null = null;
@@ -43,7 +44,7 @@ export async function getDataSource(): Promise<DataSource> {
         ssl: false,
         synchronize: process.env.DB_SYNCHRONIZE === "true",
         logging: process.env.NODE_ENV === "development" ? ["error"] : false,
-        migrations: [FinancialAndMaintenance20260625000000],
+        migrations: [FinancialAndMaintenance20260625000000, AddContactPinPlain20260626000000],
         entities: [
           UserSchema,
           OfficeSchema,

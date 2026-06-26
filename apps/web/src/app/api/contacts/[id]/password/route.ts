@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const plainPassword = generatePassword();
     const hash = await bcrypt.hash(plainPassword, 10);
 
-    await repo.update(id, { pin_hash: hash } as any);
+    await repo.update(id, { pin_hash: hash, pin_plain: plainPassword } as any);
 
     return ok({ password: plainPassword });
   } catch (err) {
