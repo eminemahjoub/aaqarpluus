@@ -13,6 +13,7 @@ export const ContactSchema = schema({
     name: { type: "varchar", length: 255 },
     phone: { type: "varchar", length: 50, nullable: true, unique: true },
     alternative_phone: { type: "varchar", length: 50, nullable: true },
+    email: { type: "varchar", length: 255, nullable: true, unique: true },
     type: { type: "varchar", length: 50, default: "tenant" },
     sex: { type: "varchar", length: 20, nullable: true },
     id_number: { type: "varchar", length: 50, nullable: true, unique: true },
