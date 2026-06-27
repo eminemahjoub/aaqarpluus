@@ -45,6 +45,18 @@ export function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function extractUniqueField(message: string): string | null {
+  const m = message.match(/Key \(([^)]+)\)=/);
+  if (!m) return null;
+  const column = m[1];
+  const map: Record<string, string> = {
+    phone: "رقم الجوال",
+    email: "البريد الإلكتروني",
+    id_number: "رقم الهوية",
+  };
+  return map[column] ?? column;
+}
+
 export function handleError(err: unknown) {
   const isDev = process.env.NODE_ENV === "development";
   if (err instanceof AppError) {
@@ -56,6 +68,11 @@ export function handleError(err: unknown) {
       },
       err.status
     );
+  }
+  const pgErr = err as { code?: string; message?: string };
+  if (pgErr.code === "23505" && pgErr.message) {
+    const field = extractUniqueField(pgErr.message);
+    return jsonResponse({ error: `${field} مستخدم مسبقاً.`, code: "DUPLICATE" }, 400);
   }
   console.error(err);
   return jsonResponse({ error: "خطأ في الخادم", code: "INTERNAL" }, 500);
