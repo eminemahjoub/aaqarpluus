@@ -28,9 +28,11 @@ export async function POST(req: NextRequest) {
     const password = parsed.data.password;
 
     const normalizePhone = (s: string) => {
-      const p = s.replace(/\s+/g, "");
+      const p = s.replace(/[\s\-]/g, "");
       if (/^05\d{8}$/.test(p)) return `+966${p.substring(1)}`;
       if (/^\+9665\d{8}$/.test(p)) return p;
+      if (/^5\d{8}$/.test(p)) return `+966${p}`;
+      if (/^9665\d{8}$/.test(p)) return `+${p}`;
       return null;
     };
 
