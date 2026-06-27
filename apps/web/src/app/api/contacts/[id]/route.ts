@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, serverError, badRequest } from "@/lib/api-helpers";
+import { getUserFromRequest, unauthorized, ok, badRequest } from "@/lib/api-helpers";
+import { handleError } from "@/lib/errors";
 
 async function assertCanAccessContact(ds: any, user: any, contactId: string) {
   const userType = String(user.userType ?? "");
@@ -56,6 +57,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       name: body.name ?? (contact as any).name,
       phone: body.phone !== undefined ? body.phone : (contact as any).phone,
       alternative_phone: body.alternative_phone !== undefined ? body.alternative_phone : (contact as any).alternative_phone,
+      email: body.email !== undefined ? (body.email?.trim() || null) : (contact as any).email,
       sex: body.sex !== undefined ? (body.sex?.trim() || null) : (isTenant ? (contact as any).sex : null),
       id_number: body.id_number !== undefined ? (body.id_number?.trim() || null) : (isTenant ? (contact as any).id_number : null),
       type: newType,
@@ -65,7 +67,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const updated = await repo.findOne({ where: { id } as any });
     return ok(updated);
   } catch (err) {
-    return serverError(err);
+    return handleError(err);
   }
 }
 
@@ -88,6 +90,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await repo.update(id, { deleted_at: new Date().toISOString() } as any);
     return ok({ success: true });
   } catch (err) {
-    return serverError(err);
+    return handleError(err);
   }
 }

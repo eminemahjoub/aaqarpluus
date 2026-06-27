@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   Phone, User, Search, Filter, MessageSquare, FileText, Calendar, Mail, Shield, IdCard,
-  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download, Send, Key
+  Plus, X, Building2, DoorOpen, Coins, Repeat, ClipboardList, Download, Send, Key, Pencil
 } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -180,6 +180,9 @@ export default function AgencyRentersPage() {
   const [selectedRenter, setSelectedRenter] = React.useState<Renter | null>(null);
   const [paymentsModalContract, setPaymentsModalContract] = React.useState<ContractItem | null>(null);
   const [detailsModalRenter, setDetailsModalRenter] = React.useState<Renter | null>(null);
+  const [isEditingRenter, setIsEditingRenter] = React.useState(false);
+  const [editRenterForm, setEditRenterForm] = React.useState<Partial<Renter>>({});
+  const [editRenterError, setEditRenterError] = React.useState<string | null>(null);
   const [generatedPassword, setGeneratedPassword] = React.useState<string | null>(null);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
 
@@ -277,6 +280,35 @@ export default function AgencyRentersPage() {
         email: "",
         notes: "",
       });
+      await qc.invalidateQueries({ queryKey: ["agency", "renters"] });
+      broadcastSync("contacts:mutated");
+    },
+  });
+
+  const updateRenterMutation = useMutation({
+    mutationFn: async (payload: { id: string; data: Partial<Renter> }) => {
+      const d = payload.data;
+      const res = await authFetch(`/api/contacts/${payload.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: d.name?.trim(),
+          phone: d.phone?.trim() || null,
+          alternative_phone: d.alternative_phone?.trim() || null,
+          email: d.email?.trim() || null,
+          id_number: d.id_number?.trim() || null,
+          sex: d.sex?.trim() || null,
+          notes: d.notes?.trim() || null,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error ?? "فشل تحديث المستأجر");
+      return j as Renter;
+    },
+    onSuccess: async (updated) => {
+      setDetailsModalRenter(updated);
+      setIsEditingRenter(false);
+      setEditRenterError(null);
       await qc.invalidateQueries({ queryKey: ["agency", "renters"] });
       broadcastSync("contacts:mutated");
     },
@@ -1144,14 +1176,32 @@ export default function AgencyRentersPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={() => setDetailsModalRenter(null)}>
             <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-emerald-800/40 dark:bg-[#132a1f]" onClick={(e) => e.stopPropagation()}>
               <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">تفاصيل المستأجر</h2>
-                <button
-                  type="button"
-                  onClick={() => setDetailsModalRenter(null)}
-                  className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-400 dark:hover:bg-emerald-900/30 dark:hover:text-gray-200"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {isEditingRenter ? "تعديل المستأجر" : "تفاصيل المستأجر"}
+                </h2>
+                <div className="flex items-center gap-2">
+                  {!isEditingRenter && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditRenterForm({ ...r });
+                        setIsEditingRenter(true);
+                        setEditRenterError(null);
+                      }}
+                      className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-emerald-900/30 dark:hover:text-gray-200"
+                      title="تعديل"
+                    >
+                      <Pencil className="h-5 w-5" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setDetailsModalRenter(null); setIsEditingRenter(false); setEditRenterError(null); }}
+                    className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-400 dark:hover:bg-emerald-900/30 dark:hover:text-gray-200"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -1159,8 +1209,17 @@ export default function AgencyRentersPage() {
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                     <User className="h-6 w-6" />
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{r.name}</h3>
+                  <div className="flex-1">
+                    {isEditingRenter ? (
+                      <input
+                        type="text"
+                        value={editRenterForm.name ?? r.name}
+                        onChange={(e) => setEditRenterForm({ ...editRenterForm, name: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-bold text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                      />
+                    ) : (
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white">{r.name}</h3>
+                    )}
                     <span className={[
                       "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                       r.status === "active"
@@ -1172,45 +1231,124 @@ export default function AgencyRentersPage() {
                   </div>
                 </div>
 
+                {editRenterError ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+                    {editRenterError}
+                  </p>
+                ) : null}
+
                 <div className="grid gap-3 text-sm">
-                  {r.phone ? (
-                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                      <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                      <span dir="ltr">{r.phone}</span>
-                    </div>
-                  ) : null}
-                  {r.alternative_phone ? (
-                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                      <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                      <span dir="ltr">{r.alternative_phone}</span>
-                    </div>
-                  ) : null}
-                  {r.email ? (
-                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                      <Mail className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                      <span>{r.email}</span>
-                    </div>
-                  ) : null}
-                  {r.id_number ? (
-                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                      <IdCard className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                      <span>رقم الهوية: {r.id_number}</span>
-                    </div>
-                  ) : null}
-                  <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                    <Shield className="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                    <span>الجنس: {toArabicSex(r.sex)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                    <Calendar className="h-4 w-4" />
-                    <span>تاريخ الإضافة: {new Date(r.created_at).toLocaleDateString("ar-SA")}</span>
-                  </div>
-                  {r.notes ? (
-                    <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
-                      <FileText className="mt-0.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
-                      <span>{r.notes}</span>
-                    </div>
-                  ) : null}
+                  {isEditingRenter ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">رقم الجوال</label>
+                          <input
+                            type="tel"
+                            value={editRenterForm.phone ?? r.phone ?? ""}
+                            onChange={(e) => setEditRenterForm({ ...editRenterForm, phone: e.target.value })}
+                            placeholder="05xxxxxxxx"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">جوال بديل</label>
+                          <input
+                            type="tel"
+                            value={editRenterForm.alternative_phone ?? r.alternative_phone ?? ""}
+                            onChange={(e) => setEditRenterForm({ ...editRenterForm, alternative_phone: e.target.value })}
+                            placeholder="05xxxxxxxx"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">البريد الإلكتروني</label>
+                        <input
+                          type="email"
+                          value={editRenterForm.email ?? r.email ?? ""}
+                          onChange={(e) => setEditRenterForm({ ...editRenterForm, email: e.target.value })}
+                          placeholder="email@example.com"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">رقم الهوية</label>
+                          <input
+                            type="text"
+                            value={editRenterForm.id_number ?? r.id_number ?? ""}
+                            onChange={(e) => setEditRenterForm({ ...editRenterForm, id_number: e.target.value })}
+                            placeholder="رقم الهوية الوطنية"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">الجنس</label>
+                          <select
+                            value={editRenterForm.sex ?? r.sex ?? ""}
+                            onChange={(e) => setEditRenterForm({ ...editRenterForm, sex: e.target.value })}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                          >
+                            <option value="">— اختر —</option>
+                            <option value="ذكر">ذكر</option>
+                            <option value="أنثى">أنثى</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">ملاحظات</label>
+                        <textarea
+                          value={editRenterForm.notes ?? r.notes ?? ""}
+                          onChange={(e) => setEditRenterForm({ ...editRenterForm, notes: e.target.value })}
+                          placeholder="ملاحظات اختيارية"
+                          rows={3}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {r.phone ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span dir="ltr">{r.phone}</span>
+                        </div>
+                      ) : null}
+                      {r.alternative_phone ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <Phone className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span dir="ltr">{r.alternative_phone}</span>
+                        </div>
+                      ) : null}
+                      {r.email ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <Mail className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>{r.email}</span>
+                        </div>
+                      ) : null}
+                      {r.id_number ? (
+                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                          <IdCard className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>رقم الهوية: {r.id_number}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Shield className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                        <span>الجنس: {toArabicSex(r.sex)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                        <Calendar className="h-4 w-4" />
+                        <span>تاريخ الإضافة: {new Date(r.created_at).toLocaleDateString("ar-SA")}</span>
+                      </div>
+                      {r.notes ? (
+                        <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
+                          <FileText className="mt-0.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+                          <span>{r.notes}</span>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-800/30 dark:bg-indigo-950/20">
@@ -1297,14 +1435,41 @@ export default function AgencyRentersPage() {
                 )}
               </div>
 
-              <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setDetailsModalRenter(null)}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/40 dark:bg-[#1a3528] dark:text-gray-300 dark:hover:bg-emerald-900/20"
-                >
-                  إغلاق
-                </button>
+              <div className="mt-6 flex justify-end gap-2">
+                {isEditingRenter ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={updateRenterMutation.isPending}
+                      onClick={async () => {
+                        setEditRenterError(null);
+                        try {
+                          await updateRenterMutation.mutateAsync({ id: r.id, data: editRenterForm });
+                        } catch (e: any) {
+                          setEditRenterError(e?.message ?? "فشل تحديث المستأجر");
+                        }
+                      }}
+                      className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      {updateRenterMutation.isPending ? "جاري الحفظ..." : "حفظ"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsEditingRenter(false); setEditRenterError(null); setEditRenterForm({}); }}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/40 dark:bg-[#1a3528] dark:text-gray-300 dark:hover:bg-emerald-900/20"
+                    >
+                      إلغاء
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setDetailsModalRenter(null)}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-emerald-800/40 dark:bg-[#1a3528] dark:text-gray-300 dark:hover:bg-emerald-900/20"
+                  >
+                    إغلاق
+                  </button>
+                )}
               </div>
             </div>
           </div>
