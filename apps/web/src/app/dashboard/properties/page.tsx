@@ -316,10 +316,10 @@ function Modal({ isOpen, onClose, title, children, size = "md" }: ModalProps) {
 // ADD PROPERTY CHOICE MODAL
 // ============================================================================
 
-function AddPropertyChoiceModal({ isOpen, onClose, onSelect }: { isOpen: boolean; onClose: () => void; onSelect: (type: "single" | "complex") => void }) {
+function AddPropertyChoiceModal({ isOpen, onClose, onSelect }: { isOpen: boolean; onClose: () => void; onSelect: (type: "single") => void }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="إضافة عقار جديد" size="md">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="mx-auto grid max-w-xs gap-4 grid-cols-1">
         <button
           onClick={() => onSelect("single")}
           className="flex flex-col items-center gap-3 rounded-xl border-2 border-indigo-600 bg-indigo-50 p-6 transition hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30"
@@ -330,18 +330,6 @@ function AddPropertyChoiceModal({ isOpen, onClose, onSelect }: { isOpen: boolean
           <div className="text-center">
             <p className="font-semibold text-gray-900 dark:text-white">إضافة عقار</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">(شقة - دور - عمارة بمستأجر وحيد وغيرها)</p>
-          </div>
-        </button>
-        <button
-          onClick={() => onSelect("complex")}
-          className="flex flex-col items-center gap-3 rounded-xl border-2 border-indigo-600 bg-indigo-50 p-6 transition hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-600 text-white">
-            <LayoutGrid className="h-6 w-6" />
-          </div>
-          <div className="text-center">
-            <p className="font-semibold text-gray-900 dark:text-white">إضافة مجمع</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">(عمارة - مجمع سكني تجاري وغيرها)</p>
           </div>
         </button>
       </div>
@@ -3256,13 +3244,9 @@ export function PropertiesContent() {
   const displayedProperties =
     activeTab === "active" ? activeProperties : activeTab === "vacant" ? vacantProperties : filteredProperties;
 
-  const handleAddPropertyChoice = (type: "single" | "complex") => {
+  const handleAddPropertyChoice = () => {
     setShowAddChoice(false);
-    if (type === "single") {
-      setShowAddProperty(true);
-    } else {
-      setShowAddComplex(true);
-    }
+    setShowAddProperty(true);
   };
 
   const handleDeleteProperty = (propertyId: string) => {
@@ -3417,6 +3401,7 @@ export function PropertiesContent() {
         onClose={() => setShowAddChoice(false)}
         onSelect={handleAddPropertyChoice}
       />
+      {/* TODO: AddComplexModal kept for backwards compatibility; not reachable from UI */}
       <AddComplexModal
         isOpen={showAddComplex}
         onClose={() => setShowAddComplex(false)}
