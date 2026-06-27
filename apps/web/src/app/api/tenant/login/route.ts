@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDataSource } from "@/lib/db/data-source";
-import { ok, badRequest, serverError, unauthorized } from "@/lib/api-helpers";
+import { ok, badRequest, serverError } from "@/lib/api-helpers";
 import { signTenantToken, serializeTenantCookie } from "@/lib/tenant-auth";
 import { z } from "zod";
 import { badZod } from "@/lib/validation";
@@ -43,13 +43,13 @@ export async function POST(req: NextRequest) {
       .andWhere("c.deleted_at IS NULL")
       .getOne();
 
-    if (!contact) return unauthorized();
+    if (!contact) return badRequest("لا يوجد مستأجر مرتبط بهذا الرقم.");
 
     const c = contact as { pin_hash?: string; id?: string; name?: string; owner_id?: string; phone?: string };
-    if (!c.pin_hash) return badRequest("لم يتم تفعيل الدخول لهذا الحساب بعد");
+    if (!c.pin_hash) return badRequest("لم يتم تفعيل الدخول لهذا الحساب بعد. أنشئ رمز دخول من صفحة المستأجرين.");
 
     const valid = await bcrypt.compare(parsed.data.pin, c.pin_hash);
-    if (!valid) return unauthorized();
+    if (!valid) return badRequest("رمز الدخول غير صحيح.");
 
     // Verify active contract
     const contract = await ds
