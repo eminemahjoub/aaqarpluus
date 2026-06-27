@@ -57,12 +57,14 @@ export async function POST(req: NextRequest) {
       const tenantPhone = normalizePhone(rawIdentifier);
       if (tenantPhone) {
         const localPhone = tenantPhone.startsWith("+966") ? "0" + tenantPhone.slice(4) : tenantPhone;
+        const mobileOnly = tenantPhone.startsWith("+966") ? tenantPhone.slice(4) : localPhone.startsWith("0") ? localPhone.slice(1) : localPhone;
+        const phones = [tenantPhone, localPhone, mobileOnly, "966" + mobileOnly];
         const contact = await ds
           .getRepository("Contact")
           .createQueryBuilder("c")
           .where(
             "c.phone IN (:...phones) OR c.alternative_phone IN (:...phones)",
-            { phones: [tenantPhone, localPhone] }
+            { phones }
           )
           .andWhere("c.deleted_at IS NULL")
           .getOne();

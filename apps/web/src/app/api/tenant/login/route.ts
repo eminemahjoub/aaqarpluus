@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
     const phone = normalizePhone(parsed.data.phone);
     if (!phone) return badRequest("صيغة رقم الجوال غير صحيحة");
     const localPhone = phone.startsWith("+966") ? "0" + phone.slice(4) : phone;
+    const mobileOnly = phone.startsWith("+966") ? phone.slice(4) : localPhone.startsWith("0") ? localPhone.slice(1) : localPhone;
+    const phones = [phone, localPhone, mobileOnly, "966" + mobileOnly];
 
     const ds = await getDataSource();
     const contact = await ds
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
       .createQueryBuilder("c")
       .where(
         "c.phone IN (:...phones) OR c.alternative_phone IN (:...phones)",
-        { phones: [phone, localPhone] }
+        { phones }
       )
       .andWhere("c.deleted_at IS NULL")
       .getOne();
