@@ -33,7 +33,7 @@ export default function CreateBuildingForm({ onSubmit, isSubmitting }: Props) {
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm({
+  } = useForm<BuildingFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       floors_count: 1,
