@@ -21,6 +21,7 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      target: deps
     env_file:
       - ./apps/web/.env.docker
     ports:
