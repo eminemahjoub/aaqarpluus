@@ -6,8 +6,13 @@ function requireEnv(name: string): string {
   return value;
 }
 
-const JWT_SECRET = new TextEncoder().encode(requireEnv("JWT_SECRET"));
-const JWT_REFRESH_SECRET = new TextEncoder().encode(requireEnv("JWT_REFRESH_SECRET"));
+function getJwtSecret() {
+  return new TextEncoder().encode(requireEnv("JWT_SECRET"));
+}
+
+function getJwtRefreshSecret() {
+  return new TextEncoder().encode(requireEnv("JWT_REFRESH_SECRET"));
+}
 
 // Cookies
 const TOKEN_COOKIE_BASE = "aaqar_token";
@@ -47,7 +52,7 @@ export async function signAccessToken(payload: JwtPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_EXPIRY)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function signRefreshToken(payload: RefreshJwtPayload): Promise<string> {
@@ -55,12 +60,12 @@ export async function signRefreshToken(payload: RefreshJwtPayload): Promise<stri
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(REFRESH_TOKEN_EXPIRY)
-    .sign(JWT_REFRESH_SECRET);
+    .sign(getJwtRefreshSecret());
 }
 
 export async function verifyToken(token: string): Promise<JwtPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as JwtPayload;
   } catch {
     return null;
@@ -69,7 +74,7 @@ export async function verifyToken(token: string): Promise<JwtPayload | null> {
 
 export async function verifyRefreshToken(token: string): Promise<RefreshJwtPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_REFRESH_SECRET);
+    const { payload } = await jwtVerify(token, getJwtRefreshSecret());
     return payload as unknown as RefreshJwtPayload;
   } catch {
     return null;
