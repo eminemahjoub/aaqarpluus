@@ -6,6 +6,7 @@ import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest 
 import { z } from "zod";
 import { UuidSchema, badZod } from "@/lib/validation";
 import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
+import { syncRevenueForPayment } from "@/lib/contract-payment-revenue";
 import { createPaymentReceiptPdfBytes } from "@/lib/receipt-pdf";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
@@ -210,6 +211,7 @@ export async function POST(req: NextRequest) {
             `receipt_${(payment as any).id}_%`,
           ]);
           await createReceiptDocument(ds, contract, payment);
+          await syncRevenueForPayment(contract, payment, ds);
         }
       }
       saved.push(payment);

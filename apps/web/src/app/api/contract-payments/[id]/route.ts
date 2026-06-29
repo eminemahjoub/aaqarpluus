@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { syncRevenueForPayment, deleteRevenueForPayment } from "@/lib/contract-payment-revenue";
 import { createPaymentReceiptPdfBytes } from "@/lib/receipt-pdf";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
@@ -69,6 +70,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const shouldBecomePaid = updates.status === "paid";
     let receiptDocument: any | null = null;
+    let contract: any | null = null;
     if (shouldBecomePaid) {
       try {
         await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
@@ -76,7 +78,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           `receipt_${id}_%`,
         ]);
 
-        const contract = await ds
+        contract = await ds
           .getRepository("Contract")
           .createQueryBuilder("c")
           .leftJoinAndSelect("c.contact", "contact")
@@ -118,6 +120,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const updated = await repo.findOne({ where: { id } as any });
+    if (updated) {
+      if (!contract) {
+        contract = await ds
+          .getRepository("Contract")
+          .createQueryBuilder("c")
+          .leftJoinAndSelect("c.contact", "contact")
+          .leftJoinAndSelect("c.property", "property")
+          .leftJoinAndSelect("c.unit", "unit")
+          .where("c.id = :id", { id: (payment as any).contract_id })
+          .getOne();
+      }
+      if (contract) {
+        await syncRevenueForPayment(contract, updated, ds);
+      }
+    }
     return ok(receiptDocument ? { payment: updated, receipt: receiptDocument } : updated);
   } catch (err) {
     console.error("[contract-payments PUT] error:", err);
@@ -152,6 +169,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     if (!payment) return unauthorized();
 
+    await deleteRevenueForPayment(id, ds);
     await ds.getRepository("ContractPayment").delete(id);
     return ok({ success: true });
   } catch (err) {
