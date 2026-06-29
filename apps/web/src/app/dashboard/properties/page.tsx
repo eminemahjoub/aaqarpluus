@@ -5504,6 +5504,7 @@ function PropertyDetail({
                                         body: JSON.stringify({ batch: rows }),
                                       });
                                     }
+                                    bumpRefresh();
                                   } finally {
                                     setGeneratingPayments(false);
                                   }
@@ -5553,12 +5554,13 @@ function PropertyDetail({
                                 {p.status === "paid" ? (
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      void fetch(`/api/contract-payments/${p.id}`, {
+                                    onClick={async () => {
+                                      await fetch(`/api/contract-payments/${p.id}`, {
                                         method: "PUT",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({ status: "pending", paid_at: null }),
                                       });
+                                      bumpRefresh();
                                     }}
                                     className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-emerald-800/30 dark:bg-[#1a3528] dark:text-gray-200 dark:hover:bg-emerald-800/20"
                                   >
@@ -5567,12 +5569,13 @@ function PropertyDetail({
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      void fetch(`/api/contract-payments/${p.id}`, {
+                                    onClick={async () => {
+                                      await fetch(`/api/contract-payments/${p.id}`, {
                                         method: "PUT",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({ status: "paid", paid_at: new Date().toISOString() }),
                                       });
+                                      bumpRefresh();
                                     }}
                                     className="rounded-lg bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-800"
                                   >
