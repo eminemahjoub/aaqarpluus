@@ -5,7 +5,7 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
   // --- API route protection ---
-  if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
+  if (path.startsWith("/api/") && !path.startsWith("/api/auth/") && !path.startsWith("/api/health")) {
     const token = request.cookies.get(TOKEN_COOKIE)?.value;
     if (!token) {
       return new NextResponse(JSON.stringify({ error: "غير مصرح", code: "UNAUTHORIZED" }), {

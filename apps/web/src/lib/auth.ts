@@ -100,8 +100,9 @@ export function serializeCsrfCookie(token: string) {
 }
 
 export function validateCsrfToken(req: { cookies: { get: (name: string) => { value?: string } | undefined }; headers: { get: (name: string) => string | null } }): boolean {
-  const cookieToken = req.cookies.get(CSRF_COOKIE)?.value;
   const headerToken = req.headers.get("x-csrf-token");
-  if (!cookieToken || !headerToken) return false;
+  if (!headerToken) return false;
+  const cookieToken = req.cookies.get(CSRF_COOKIE)?.value ?? req.cookies.get("csrf_token")?.value;
+  if (!cookieToken) return false;
   return cookieToken === headerToken;
 }
