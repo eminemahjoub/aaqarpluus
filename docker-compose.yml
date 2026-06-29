@@ -24,6 +24,8 @@ services:
       target: deps
     env_file:
       - ./apps/web/.env.docker
+    environment:
+      - PNPM_CONFIG_CONFIRM_MODULES_PURGE=false
     ports:
       # Web service mapped to port 2001 on host
       - "2001:2000"
