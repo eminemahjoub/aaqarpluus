@@ -4,11 +4,11 @@
 FROM node:22-alpine AS deps
 
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@9
 
 COPY package.json pnpm-lock.yaml ./
 ENV PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS=true
-RUN pnpm install
+RUN pnpm install --fetch-timeout 600000
 
 # -----------------------
 # Stage 2: Builder
@@ -16,7 +16,7 @@ RUN pnpm install
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@9
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
