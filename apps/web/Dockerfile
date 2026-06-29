@@ -7,7 +7,8 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm config set ignore-build-scripts false && pnpm install
+ENV PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS=true
+RUN pnpm install
 
 # -----------------------
 # Stage 2: Builder
