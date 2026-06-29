@@ -12,8 +12,14 @@ function req(name) {
   return String(v);
 }
 
+function opt(name) {
+  const v = process.env[name];
+  if (!v || String(v).trim() === "") return null;
+  return String(v);
+}
+
 module.exports = {
-  cfToken: req("CF_API_TOKEN"),
-  cfAccountId: req("CF_ACCOUNT_ID"),
+  cfToken: opt("CF_API_TOKEN"),
+  cfAccountId: opt("CF_ACCOUNT_ID"),
 };
 
