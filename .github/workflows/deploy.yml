@@ -1,0 +1,52 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: SSH Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          command_timeout: 12m
+          script: |
+            set -e
+            cd ~/aaqarpluus
+
+            echo "==> Pulling latest code..."
+            git pull origin main
+
+            echo "==> Checking if dependencies changed..."
+            LOCKFILE_CHANGED=$(git diff HEAD@{1} HEAD --name-only 2>/dev/null | grep -c "pnpm-lock.yaml" || true)
+
+            if [ "$LOCKFILE_CHANGED" -gt "0" ]; then
+              echo "==> pnpm-lock.yaml changed — dropping node_modules volume..."
+              docker compose down
+              docker volume rm aaqarpluus_web_node_modules 2>/dev/null || true
+            fi
+
+            echo "==> Rebuilding and restarting web container..."
+            docker compose up -d --build web
+
+            echo "==> Waiting for container to be healthy..."
+            sleep 10
+
+            STATUS=$(docker inspect --format='{{.State.Status}}' aaqarpluus-web-1 2>/dev/null || echo "missing")
+            if [ "$STATUS" != "running" ]; then
+              echo "ERROR: Container is not running (status: $STATUS)"
+              docker logs aaqarpluus-web-1 --tail=30
+              exit 1
+            fi
+
+            echo "==> Deploy successful! Container status: $STATUS"
