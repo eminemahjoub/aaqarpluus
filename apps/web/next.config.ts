@@ -6,6 +6,7 @@ import type { NextConfig } from "next";
 require("./config/env.js");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Allow dev server WebSocket connections from production domain
   allowedDevOrigins: ['aaqarplus.tech', 'www.aaqarplus.tech'],
   async headers() {
