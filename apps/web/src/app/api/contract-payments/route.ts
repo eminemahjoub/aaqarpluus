@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";

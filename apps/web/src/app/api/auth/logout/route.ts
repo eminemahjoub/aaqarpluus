@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { TOKEN_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { ok, getUserFromRequest } from "@/lib/api-helpers";
 import { getDataSource } from "@/lib/db/data-source";

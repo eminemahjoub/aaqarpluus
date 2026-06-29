@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { getDataSource } from "@/lib/db/data-source";
 import { jsonResponse } from "@/lib/errors";
 

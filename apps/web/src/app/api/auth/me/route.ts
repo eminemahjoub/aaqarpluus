@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { getDataSource } from "@/lib/db/data-source";
