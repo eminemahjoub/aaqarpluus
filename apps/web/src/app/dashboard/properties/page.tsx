@@ -4483,6 +4483,89 @@ function PropertyDetail({
             </p>
           </div>
 
+          {/* All Property Data */}
+          <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">بيانات العقار الكاملة</h3>
+              {canMutateProperties ? (
+                <button
+                  type="button"
+                  onClick={() => setShowEditProperty(true)}
+                  className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-gray-300"
+                >
+                  <Edit className="h-4 w-4" />
+                  تعديل
+                </button>
+              ) : null}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">الاسم</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.name || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">العنوان</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.title || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">نوع النموذج</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.property_model_type || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">المنطقة</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.region || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">المدينة</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.city || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">الحي</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.neighborhood || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">العنوان التفصيلي</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.address || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">عدد الوحدات</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.units_count}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">عدد الشقق</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.apartments_count}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">عدد المحلات</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.shops_count}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">وحدات أخرى</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.other_units_count}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">مساحة العقار</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.area_m2 ? `${property.area_m2}² م` : "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">تكلفة العقار</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.property_cost != null ? `${property.property_cost.toLocaleString()} ر.س` : "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">حساب المياه</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.water_account || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">حساب الكهرباء</span>
+                <p className="font-medium text-gray-900 dark:text-white">{property.electricity_account || "—"}</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">تاريخ الإنشاء</span>
+                <p className="font-medium text-gray-900 dark:text-white">{new Date(property.created_at).toLocaleDateString("ar-SA")}</p>
+              </div>
+            </div>
+          </div>
+
           {/* Contract Info */}
           <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -4530,6 +4613,57 @@ function PropertyDetail({
               </div>
             </div>
             )}
+          </div>
+
+          {/* Renters / Contract History */}
+          <div className="rounded-xl bg-white shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">
+            <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-emerald-800/30">
+              <h3 className="font-semibold text-gray-900 dark:text-white">سجل المستأجرين / العقود</h3>
+              <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-[#1a3528] dark:text-gray-400">
+                {contractHistory.length} عقد
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              {contractHistory.length === 0 ? (
+                <div className="p-4 text-sm text-gray-500 dark:text-gray-400">لا يوجد عقود مسجلة لهذا العقار.</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600 dark:bg-[#1a3528] dark:text-gray-400">
+                    <tr>
+                      <th className="px-4 py-3 text-right font-medium">المستأجر</th>
+                      <th className="px-4 py-3 text-right font-medium">الوحدة</th>
+                      <th className="px-4 py-3 text-right font-medium">بداية العقد</th>
+                      <th className="px-4 py-3 text-right font-medium">نهاية العقد</th>
+                      <th className="px-4 py-3 text-right font-medium">الإيجار السنوي</th>
+                      <th className="px-4 py-3 text-right font-medium">الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-emerald-800/30">
+                    {contractHistory.map((contract) => (
+                      <tr key={contract.id} className="hover:bg-gray-50 dark:hover:bg-[#1a3528]/50">
+                        <td className="px-4 py-3 text-gray-900 dark:text-white">{contract.tenant || "—"}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.unitLabel || "—"}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.startDate}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contract.endDate}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-white">{contract.rent.toLocaleString()} ر.س</td>
+                        <td className="px-4 py-3">
+                          <span className={[
+                            "rounded-full px-2 py-0.5 text-xs",
+                            contract.status === "active" || contract.status === "ساري"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : contract.status === "ended"
+                                ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+                          ].join(" ")}>
+                            {contract.status === "active" || contract.status === "ساري" ? "ساري" : contract.status === "ended" ? "منتهي" : "ملغي"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
 
           {/* Expenses Table */}
