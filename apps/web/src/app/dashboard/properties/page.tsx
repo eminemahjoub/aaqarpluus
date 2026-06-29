@@ -1084,22 +1084,6 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">إجمالي الوحدات: {totalUnitsFromCounts}</p>
               </div>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">طريقة الدفع / الاستحقاق *</label>
-                  <select
-                    value={formData.contractDuration}
-                    onChange={(e) => setFormData({ ...formData, contractDuration: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
-                  >
-                    <option value="شهري">شهري</option>
-                    <option value="نصف سنوي">نصف سنوي</option>
-                    <option value="ربع سنوي">ربع سنوي</option>
-                    <option value="سنوي">سنوي</option>
-                  </select>
-                </div>
-              </div>
-
               {structureError ? (
                 <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/30">
                   <p className="text-sm font-semibold text-red-700 dark:text-red-300">{structureError}</p>
