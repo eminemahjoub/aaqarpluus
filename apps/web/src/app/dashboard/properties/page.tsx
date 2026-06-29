@@ -3710,38 +3710,6 @@ function PropertyDetail({
 
   useEffect(() => {
     let cancelled = false;
-    if (!canMutateProperties) {
-      setCommissionTotals(null);
-      return;
-    }
-    void (async () => {
-      try {
-        const y = new Date().getFullYear();
-        const m = String(new Date().getMonth() + 1).padStart(2, "0");
-        const url = new URL("/api/agency/commissions", window.location.origin);
-        url.searchParams.set("year", String(y));
-        url.searchParams.set("month", `${y}-${m}`);
-        url.searchParams.set("property_id", String(property.id));
-        const res = await fetch(url.toString());
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setCommissionTotals({
-          totalCommissionSar: Number(data?.totalCommissionSar) || 0,
-          monthCommissionSar: Number(data?.monthCommissionSar) || 0,
-          yearCommissionSar: Number(data?.yearCommissionSar) || 0,
-        });
-      } catch {
-        if (!cancelled) setCommissionTotals(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canMutateProperties, property.id, refreshTick, localTick]);
-
-  useEffect(() => {
-    let cancelled = false;
     if (!editingContractId) {
       setEditContractForm(null);
       setEditError(null);
@@ -4010,6 +3978,25 @@ function PropertyDetail({
         // Units total rent
         const sum = units.reduce((s: number, u: any) => s + (Number(u.rent_amount) || 0), 0);
         setUnitsTotalRent(sum > 0 ? sum : null);
+
+        // Commission totals (for agency and owner)
+        const commissionPercent = Number(property.commission_percent) || 0;
+        const paidPayments = paymentsAll.filter((p: any) => String(p.status) === "paid");
+        const commissionFromPayment = (amount: number) => (amount * commissionPercent) / 100;
+        const totalCommissionSar = paidPayments.reduce(
+          (s: number, p: any) => s + commissionFromPayment(Number(p.amount_sar) || 0),
+          0,
+        );
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = `${currentYear}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const monthCommissionSar = paidPayments
+          .filter((p: any) => p.paid_at && String(p.paid_at).startsWith(currentMonth))
+          .reduce((s: number, p: any) => s + commissionFromPayment(Number(p.amount_sar) || 0), 0);
+        const yearCommissionSar = paidPayments
+          .filter((p: any) => p.paid_at && new Date(p.paid_at).getFullYear() === currentYear)
+          .reduce((s: number, p: any) => s + commissionFromPayment(Number(p.amount_sar) || 0), 0);
+        setCommissionTotals({ totalCommissionSar, monthCommissionSar, yearCommissionSar });
       }
     }
 
