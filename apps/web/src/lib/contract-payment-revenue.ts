@@ -4,10 +4,14 @@ export async function syncRevenueForPayment(contract: any, payment: any, ds?: an
   const dataSource = ds || (await getDataSource());
   const revenueRepo = dataSource.getRepository("Revenue");
   const paymentId = String((payment as any).id);
-  const description = `دفعة إيجار #${paymentId}`;
+  const description = "دفعة إيجار";
 
   const existing = await revenueRepo.findOne({
-    where: { contract_id: String(contract.id), description } as any,
+    where: [
+      { payment_id: paymentId } as any,
+      { description: `دفعة إيجار #${paymentId}` } as any,
+      { description: `${paymentId}# دفعة إيجار` } as any,
+    ],
   });
 
   const isPaid = String((payment as any).status) === "paid";
@@ -25,6 +29,7 @@ export async function syncRevenueForPayment(contract: any, payment: any, ds?: an
       amount_sar: amount,
       received_at: receivedAt,
       payment_method: paymentMethod,
+      description,
     } as any);
     return;
   }
@@ -35,6 +40,7 @@ export async function syncRevenueForPayment(contract: any, payment: any, ds?: an
     unit_id: (contract as any).unit_id ? String((contract as any).unit_id) : null,
     contract_id: String(contract.id),
     contact_id: (contract as any).contact_id ? String((contract as any).contact_id) : null,
+    payment_id: paymentId,
     type: "إيجار",
     amount_sar: amount,
     payment_method: paymentMethod,
@@ -47,9 +53,12 @@ export async function syncRevenueForPayment(contract: any, payment: any, ds?: an
 export async function deleteRevenueForPayment(paymentId: string, ds?: any) {
   const dataSource = ds || (await getDataSource());
   const revenueRepo = dataSource.getRepository("Revenue");
-  const description = `دفعة إيجار #${paymentId}`;
   const existing = await revenueRepo.findOne({
-    where: { description } as any,
+    where: [
+      { payment_id: paymentId } as any,
+      { description: `دفعة إيجار #${paymentId}` } as any,
+      { description: `${paymentId}# دفعة إيجار` } as any,
+    ],
   });
   if (existing) await revenueRepo.delete(existing.id);
 }

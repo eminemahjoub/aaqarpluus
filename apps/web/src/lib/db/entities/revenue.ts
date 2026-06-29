@@ -14,6 +14,7 @@ export const RevenueSchema = schema({
     unit_id: { type: "uuid", nullable: true },
     contract_id: { type: "uuid", nullable: true },
     contact_id: { type: "uuid", nullable: true },
+    payment_id: { type: "uuid", nullable: true },
     type: { type: "varchar", length: 100, nullable: true },
     amount_sar: { type: "numeric", precision: 14, scale: 2 },
     payment_method: { type: "varchar", length: 100, nullable: true },

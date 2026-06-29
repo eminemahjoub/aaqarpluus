@@ -3889,7 +3889,10 @@ function PropertyDetail({
             status: "مسدد",
             date: r.received_at ? String(r.received_at).split("T")[0] : "",
             method: String(r.payment_method ?? "—"),
-            notes: String(r.description ?? ""),
+            notes: String(r.description ?? "")
+              .replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}#\s*/, "")
+              .replace(/#\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "")
+              .trim() || "—",
             contact: r.contact?.name ?? "—",
           })),
         );
