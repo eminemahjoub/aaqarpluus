@@ -6,7 +6,9 @@ function requireEnv(name: string): string {
   return value;
 }
 
-const JWT_SECRET = new TextEncoder().encode(requireEnv("JWT_SECRET"));
+function getJwtSecret() {
+  return new TextEncoder().encode(requireEnv("JWT_SECRET"));
+}
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -29,12 +31,12 @@ export async function signTenantToken(payload: TenantJwtPayload): Promise<string
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifyTenantToken(token: string): Promise<TenantJwtPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     if (payload.userType !== "tenant") return null;
     return {
       tenantId: String(payload.tenantId),
