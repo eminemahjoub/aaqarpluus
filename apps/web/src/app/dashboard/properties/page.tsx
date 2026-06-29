@@ -935,16 +935,7 @@ function AddPropertyModal({ isOpen, onClose, userType }: { isOpen: boolean; onCl
             </div>
           </div>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              المجمع
-              <Info className="h-4 w-4 text-indigo-600" />
-            </label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option>الإيجار الاختياري في حال العقار فرعي</option>
-            </select>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
               الاسم
@@ -1421,16 +1412,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="تعديل العقار" size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              المجمع
-              <Info className="h-4 w-4 text-indigo-600" />
-            </label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white">
-              <option>الإيجار الاختياري في حال العقار فرعي</option>
-            </select>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
               الاسم
