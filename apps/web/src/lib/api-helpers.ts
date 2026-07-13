@@ -20,15 +20,11 @@ export async function getUserFromRequest(req: NextRequest): Promise<JwtPayload |
 
   // 2. Fallback: direct cookie-based or Bearer token auth (API/curl/mobile)
   const cookieToken = req.cookies.get(TOKEN_COOKIE)?.value;
-  console.log("[DEBUG] TOKEN_COOKIE=", TOKEN_COOKIE, "cookieToken=", cookieToken ? "present" : "missing");
   if (cookieToken) return verifyToken(cookieToken);
 
   const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
-  console.log("[DEBUG] authHeader=", authHeader ? "present" : "missing");
   if (authHeader?.startsWith("Bearer ")) {
-    const verified = await verifyToken(authHeader.slice(7));
-    console.log("[DEBUG] bearer verified=", verified ? "yes" : "no");
-    return verified;
+    return verifyToken(authHeader.slice(7));
   }
   return null;
 }

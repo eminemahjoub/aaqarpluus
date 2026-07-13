@@ -54,7 +54,7 @@ async function assertCanAccessProperty(ds: any, user: any, propertyId: string) {
 }
 
 const UploadMetaSchema = z.object({
-  property_id: UuidSchema,
+  property_id: UuidSchema.optional().nullable(),
   contract_id: UuidSchema.optional().nullable(),
   category: z.string().trim().optional().nullable(),
 });
@@ -116,12 +116,18 @@ export async function POST(req: NextRequest) {
     });
     if (!metaParsed.success) return badRequest(badZod(metaParsed.error));
 
-    const pid = String(metaParsed.data.property_id);
-    const can = await assertCanAccessProperty(ds, user, pid);
-    if (!can) return unauthorized();
-    const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
-    if (!prop) return badRequest("العقار غير موجود");
-    const ownerId = String((prop as any).owner_id);
+    const pid = metaParsed.data.property_id;
+    let ownerId: string;
+
+    if (pid) {
+      const can = await assertCanAccessProperty(ds, user, pid);
+      if (!can) return unauthorized();
+      const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
+      if (!prop) return badRequest("العقار غير موجود");
+      ownerId = String((prop as any).owner_id);
+    } else {
+      ownerId = user.userId;
+    }
 
     const uploadsDir = join(process.cwd(), "public", "uploads", ownerId);
     await mkdir(uploadsDir, { recursive: true });
@@ -148,7 +154,7 @@ export async function POST(req: NextRequest) {
 
     const doc = repo.create({
       owner_id: ownerId,
-      property_id: pid,
+      property_id: pid || null,
       file_name: file.name,
       mime_type: file.type || null,
       object_path: filePath,
