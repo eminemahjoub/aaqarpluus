@@ -4,7 +4,7 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { z } from "zod";
-import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
+import { CommissionPercentSchema, badZod } from "@/lib/validation";
 import { parsePagination, paginated } from "@/lib/pagination";
 import {
   buildOwnerContractSummary,
@@ -12,6 +12,7 @@ import {
   paymentsByContractId,
 } from "@/lib/owner-tenant-privacy";
 import { log } from "@/lib/logger";
+import { frequencyToEnglish, frequencyToArabic } from "@/lib/validation/contracts";
 
 export async function GET(req: NextRequest) {
   try {
@@ -229,6 +230,7 @@ export async function GET(req: NextRequest) {
 
     const result = properties.map((p: any) => ({
       ...p,
+      payment_frequency: frequencyToArabic(p.payment_frequency),
       active_contract: contractMap[p.id] ?? null,
       cover_url: coverMap[p.id] ?? null,
       owner_name: ownerMap[String(p.owner_id)]?.full_name ?? null,
@@ -377,7 +379,7 @@ export async function POST(req: NextRequest) {
         water_account: body.water_account ?? null,
         electricity_account: body.electricity_account ?? null,
         description: body.description ?? null,
-        payment_frequency: body.payment_frequency?.trim() || null,
+        payment_frequency: body.payment_frequency ? frequencyToEnglish(String(body.payment_frequency).trim()) : null,
         lessor_type: lessorType,
         lessor_contact_id: lessorContactId,
         commission_percent: commissionPercentRaw,
@@ -432,7 +434,7 @@ export async function POST(req: NextRequest) {
       water_account: body.water_account ?? null,
       electricity_account: body.electricity_account ?? null,
       description: body.description ?? null,
-      payment_frequency: body.payment_frequency?.trim() || null,
+      payment_frequency: body.payment_frequency ? frequencyToEnglish(String(body.payment_frequency).trim()) : null,
       lessor_type: lessorType,
       lessor_contact_id: lessorContactId,
       commission_percent: commissionPercentRaw,

@@ -7,6 +7,9 @@ require("./config/env.js");
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    root: __dirname,
+  },
   // Allow dev server WebSocket connections from production domain
   allowedDevOrigins: ['aaqarplus.tech', 'www.aaqarplus.tech'],
   async headers() {
@@ -37,7 +40,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
+              "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' https://www.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
           },
         ],
       },

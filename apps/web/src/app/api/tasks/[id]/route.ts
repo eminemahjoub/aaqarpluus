@@ -1,111 +1,148 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { ok, badRequest } from "@/lib/api-helpers";
+import {
+  withAuth,
+  resolveContext,
+  assertTaskAccess,
+  requireCapability,
+  AuthError,
+  type TaskContext,
+} from "@/lib/auth/scope";
+import { notifications } from "@/lib/notifications";
 
-async function assertCanAccessTask(ds: any, user: any, taskId: string) {
-  const userType = String(user.userType ?? "");
-  const repo = ds.getRepository("Task");
-  const task = await repo.findOne({ where: { id: taskId } as Record<string, unknown> });
-  if (!task) return false;
-  const typedTask = task as { owner_id?: string; property_id?: string };
-  if (userType !== "agency") {
-    return String(typedTask.owner_id) === String(user.userId);
+/**
+ * Tasks routes — scoped via @/lib/auth/scope.
+ * assertTaskAccess handles both unit-level and property-level (unit_id NULL,
+ * e.g. building-wide maintenance) tasks, throwing AuthError(404) on missing
+ * or unauthorized. ctx.unitId may be null for property-level tasks.
+ *
+ * Before/after photos live in task.extra (attachments_before/attachments_after)
+ * and are surfaced as task.photos on GET.
+ */
+const TASK_UPDATE_FIELDS = [
+  "type",
+  "priority",
+  "status",
+  "title",
+  "description",
+  "due_date",
+  "due_date_hijri",
+  "cost_sar",
+  "assigned_to",
+  "sla_deadline",
+  "materials_cost",
+  "materials",
+  "property_id",
+  "unit_id",
+  "contact_id",
+  "tenant_id",
+  "extra",
+];
+
+const taskResolver = async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  const ctx = await resolveContext();
+  requireCapability(ctx, "tasks_mutate");
+  return assertTaskAccess(ctx, String((await params).id));
+};
+
+function parseBody(body: string) {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
   }
-  const agencyId = String(user.userId);
-  const officeId = user.officeId ? String(user.officeId) : null;
-  const pid = String(typedTask.property_id ?? "");
-  if (!pid) return false;
-  if (officeId) {
-    const linked = await ds.query(
-      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
-      [officeId, pid]
-    );
-    if (Array.isArray(linked) && linked.length > 0) return true;
-  }
-  const rows = await ds.query(
-    `SELECT 1 AS ok FROM properties p
-     WHERE p.id = $1 AND p.deleted_at IS NULL
-       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = p.owner_id
-           AND u.created_by_agency_id = $2
-           AND u.deleted_at IS NULL
-       ))
-     LIMIT 1`,
-    [pid, agencyId]
-  );
-  return Array.isArray(rows) && rows.length > 0;
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
+function pickUpdates(body: Record<string, unknown>) {
+  const updates: Record<string, unknown> = {};
+  for (const f of TASK_UPDATE_FIELDS) {
+    if (body[f] !== undefined) updates[f] = body[f];
+  }
+  return updates;
+}
 
-    const { id } = await params;
-    const body = await req.json();
-    const ds = await getDataSource();
-    const repo = ds.getRepository("Task");
+async function loadTaskWithDetails(id: string) {
+  const ds = await getDataSource();
+  return ds
+    .getRepository("Task")
+    .createQueryBuilder("t")
+    .leftJoinAndSelect("t.property", "property")
+    .leftJoinAndSelect("t.unit", "unit")
+    .leftJoinAndSelect("t.contact", "contact")
+    .leftJoinAndSelect("t.tenant", "tenant")
+    .leftJoinAndSelect("t.assignedTo", "assignedTo")
+    .where("t.id = :id", { id })
+    .getOne();
+}
 
-    const task = await repo.findOne({ where: { id } as Record<string, unknown> });
-    if (!task) return unauthorized();
-    if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
+export const GET = withAuth<TaskContext, { id: string }>(
+  async (_req, { params }) =>
+    assertTaskAccess(await resolveContext(), String((await params).id)),
+  async (ctx) => {
+    const task = await loadTaskWithDetails(ctx.taskId);
+    if (!task) throw new AuthError("غير موجود", 404);
+    const extra = (task as any).extra && typeof (task as any).extra === "object" ? (task as any).extra : {};
+    return ok({
+      ...task,
+      photos: {
+        before: Array.isArray(extra.attachments_before) ? extra.attachments_before : [],
+        after: Array.isArray(extra.attachments_after) ? extra.attachments_after : [],
+      },
+    });
+  }
+);
 
-    const updates: Record<string, any> = {};
-    const fields = [
-      "title",
-      "description",
-      "due_date",
-      "due_date_hijri",
-      "status",
-      "priority",
-      "cost_sar",
-      "type",
-      "property_id",
-      "unit_id",
-      "contact_id",
-      "tenant_id",
-      "extra",
-    ];
-    for (const f of fields) {
-      if (body[f] !== undefined) updates[f] = body[f];
+export const PUT = withAuth<TaskContext, { id: string }>(taskResolver, async (ctx, req) => {
+  const body = parseBody(await req.text().catch(() => ""));
+  if (!body || typeof body !== "object") return badRequest("البيانات مطلوبة");
+
+  const ds = await getDataSource();
+  const before = await ds.getRepository("Task").findOne({ where: { id: ctx.taskId } as any });
+  const previousAssignee = before ? (before as any).assigned_to : null;
+
+  const updates = pickUpdates(body as Record<string, unknown>);
+  await ds.getRepository("Task").update(ctx.taskId, updates as any);
+
+  // Notify the newly assigned member when the assignee changes.
+  const newAssignee = updates.assigned_to != null ? String(updates.assigned_to) : null;
+  if (newAssignee && newAssignee !== String(previousAssignee ?? "")) {
+    // Resolve the tenant (contact) on the task's unit for the tenant channel
+    let tenantId: string | null = null;
+    if (ctx.unitId) {
+      const contractRows = await ds.query(
+        `SELECT contact_id FROM contracts
+          WHERE unit_id = $1 AND status = 'active' AND deleted_at IS NULL
+          LIMIT 1`,
+        [ctx.unitId]
+      );
+      tenantId = contractRows?.[0]?.contact_id ? String(contractRows[0].contact_id) : null;
     }
-
-    await repo.update(id, updates);
-
-    const updated = await ds
-      .getRepository("Task")
-      .createQueryBuilder("t")
-      .leftJoinAndSelect("t.property", "property")
-      .leftJoinAndSelect("t.unit", "unit")
-      .leftJoinAndSelect("t.contact", "contact")
-      .leftJoinAndSelect("t.tenant", "tenant")
-      .where("t.id = :id", { id })
-      .getOne();
-
-    return ok(updated);
-  } catch (err) {
-    return serverError(err);
+    await notifications
+      .dispatch({
+        type: "maintenance.assigned",
+        recipientId: newAssignee,
+        actorId: ctx.userId,
+        officeId: ctx.officeId ?? "",
+        priority: "high",
+        channels: [],
+        metadata: {
+          taskId: ctx.taskId,
+          unitNumber: String((before as any)?.extra?.unit_label ?? ""),
+          issue: String((before as any)?.title ?? body.title ?? ""),
+          priority: String(updates.priority ?? "medium"),
+          tenantId,
+        },
+      })
+      .catch(() => {});
   }
-}
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
+  return ok(await loadTaskWithDetails(ctx.taskId));
+});
 
-    const { id } = await params;
-    const ds = await getDataSource();
-    const repo = ds.getRepository("Task");
-
-    const task = await repo.findOne({ where: { id } as Record<string, unknown> });
-    if (!task) return unauthorized();
-    if (!(await assertCanAccessTask(ds, user, id))) return unauthorized();
-
-    await repo.delete(id);
-    return ok({ success: true });
-  } catch (err) {
-    return serverError(err);
-  }
-}
+export const DELETE = withAuth<TaskContext, { id: string }>(taskResolver, async (ctx) => {
+  const ds = await getDataSource();
+  await ds.getRepository("Task").delete(ctx.taskId);
+  return ok({ success: true });
+});

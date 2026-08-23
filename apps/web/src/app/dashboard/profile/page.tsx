@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { User, Phone, Mail, Building2, Edit2, Check, X, FileText, Hash, Image as ImageIcon, Upload } from "lucide-react";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { authFetch } from "@/lib/auth-fetch";
 
 type OfficeSettings = {

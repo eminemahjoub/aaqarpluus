@@ -6,7 +6,7 @@
 .env
 apps/web/.env
 apps/web/.env.*
-
+/.kilo  
 # User uploads — keep directory only (see .gitkeep); do not commit binaries
 apps/web/public/uploads/**
 !apps/web/public/uploads/.gitkeep

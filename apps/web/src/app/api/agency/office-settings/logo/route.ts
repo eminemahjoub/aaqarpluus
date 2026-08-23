@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError, badRequest } from "@/lib/api-helpers";
 
@@ -28,13 +29,26 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const ext = path.extname(file.name) || ".png";
-    const safeName = `logo_${officeId}${ext}`;
+    const extension = path.extname(file.name).toLowerCase() || ".png";
+    const allowedExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg"]);
+    if (!allowedExtensions.has(extension)) {
+      return badRequest("صيغة الملف غير مدعومة. استخدم PNG, JPG, WebP, أو SVG");
+    }
+    // Server-generated filename: the client-supplied name (file.name) is never used
+    // as an on-disk path component. officeId is the authenticated agency's DB UUID.
+    const safeName = `logo_${officeId}_${randomUUID()}${extension}`;
 
     const uploadDir = path.join(process.cwd(), "public", "uploads", "logos");
     await mkdir(uploadDir, { recursive: true });
 
-    const filePath = path.join(uploadDir, safeName);
+    // Defense-in-depth: keep the final path inside the upload directory.
+    // nosemgrep: path-join-resolve-traversal — safeName is server-generated (UUID +
+    // allowlist-validated extension), so no client input reaches this path join;
+    // the guard below additionally rejects any path escaping uploadDir.
+    const filePath = path.resolve(uploadDir, safeName); // nosemgrep: path-join-resolve-traversal
+    if (!filePath.startsWith(path.resolve(uploadDir) + path.sep)) {
+      return badRequest("مسار الملف غير صالح");
+    }
     await writeFile(filePath, buffer);
 
     const publicUrl = `/uploads/logos/${safeName}`;

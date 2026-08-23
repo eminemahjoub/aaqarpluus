@@ -44,7 +44,6 @@ export async function getPropertyAccessOrThrow(args: {
   const userType = String(user.userType ?? "");
   if (userType === "agency") {
     const agencyId = String(user.userId);
-    const officeId = user.officeId ? String(user.officeId) : null;
     const propRow = await ds.query(
       `SELECT owner_id, created_by_agency_id FROM properties WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
       [propertyId]

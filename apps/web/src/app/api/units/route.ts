@@ -4,7 +4,7 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { z } from "zod";
-import { CommissionPercentSchema, UuidSchema, badZod } from "@/lib/validation";
+import { UuidSchema, badZod } from "@/lib/validation";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
   const userType = String(user.userType ?? "");

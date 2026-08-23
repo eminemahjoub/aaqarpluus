@@ -22,6 +22,10 @@ export const TaskSchema = schema({
     status: { type: "varchar", length: 50, default: "pending" },
     priority: { type: "varchar", length: 50, default: "medium" },
     cost_sar: { type: "numeric", precision: 14, scale: 2, default: 0 },
+    assigned_to: { type: "uuid", nullable: true },
+    sla_deadline: { type: "timestamptz", nullable: true },
+    materials_cost: { type: "numeric", precision: 12, scale: 2, default: 0 },
+    materials: { type: "jsonb", default: () => "'[]'::jsonb" },
     extra: { type: "jsonb", nullable: true },
     deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },
@@ -33,5 +37,6 @@ export const TaskSchema = schema({
     unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
     contact: { type: "many-to-one", target: "Contact", joinColumn: { name: "contact_id" }, nullable: true },
     tenant: { type: "many-to-one", target: "Contact", joinColumn: { name: "tenant_id" }, nullable: true },
+    assignedTo: { type: "many-to-one", target: "User", joinColumn: { name: "assigned_to" }, nullable: true },
   },
 });

@@ -50,7 +50,6 @@ export async function GET(req: NextRequest) {
       : [String(user.userId)];
 
     if (type === "income") {
-      const extraPropertyFilter = propertyIds ? "AND r.property_id = ANY($4)" : "";
       const rows = await ds.query(
         `
         SELECT

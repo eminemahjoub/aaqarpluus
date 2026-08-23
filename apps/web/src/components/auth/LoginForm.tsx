@@ -2,12 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { authInputClass, authLabelClass } from "./auth-input-classes";
 
 export function LoginForm() {
-  const router = useRouter();
   const [identifier, setIdentifier] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);

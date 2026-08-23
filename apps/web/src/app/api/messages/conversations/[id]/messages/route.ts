@@ -11,6 +11,7 @@ import { parsePagination, paginated } from "@/lib/pagination";
 import { badZod } from "@/lib/validation";
 import { markConversationRead, requireConversationParticipant } from "@/lib/messages";
 import { logAudit } from "@/lib/audit";
+import { notifications } from "@/lib/notifications";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -170,9 +171,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (err) throw badRequest(err);
 
       const dir = await ensureUploadsDir();
-      const ext = path.extname(file!.name || "") || (isImage ? ".png" : "");
+      // Extension comes from the client-supplied file name. The base name is a
+      // server-generated UUID; keep only a short alphanumeric extension so the
+      // final name can never contain path separators (MIME is validated above).
+      const rawExt = path.extname(file!.name || "").toLowerCase();
+      const ext = /^\.[a-zA-Z0-9]{1,10}$/.test(rawExt) ? rawExt : (isImage ? ".png" : "");
       const safeName = `${randomUUID()}${ext}`;
-      const abs = path.join(dir, safeName);
+      // Defense-in-depth: keep the write inside the upload directory.
+      // nosemgrep: path-join-resolve-traversal — safeName is a server-generated UUID
+      // with a constrained extension suffix, so it cannot traverse; the guard below
+      // enforces this regardless.
+      const abs = path.resolve(dir, safeName); // nosemgrep: path-join-resolve-traversal
+      if (!abs.startsWith(path.resolve(dir) + path.sep)) {
+        throw badRequest("مسار الملف غير صالح");
+      }
       const buf = Buffer.from(await file!.arrayBuffer());
       await fs.writeFile(abs, buf);
       file_url = `/uploads/messages/${safeName}`;
@@ -213,6 +225,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           is_read: false,
         } as any)
       );
+      // Channel notification (in-app at minimum) for each participant
+      await notifications
+        .dispatch({
+          type: "message.received",
+          recipientId: String(r.user_id),
+          actorId: String(me.userId),
+          officeId: String((me as any).officeId ?? ""),
+          priority: "normal",
+          channels: [],
+          metadata: {
+            conversationId: id,
+            senderName: String(me.email ?? "—"),
+            preview: payload.type === "text" ? String(payload.content ?? "").slice(0, 120) : "[ملف مرفق]",
+          },
+        })
+        .catch(() => {});
     }
 
     logAudit({

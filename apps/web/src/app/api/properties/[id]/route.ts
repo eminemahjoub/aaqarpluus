@@ -4,6 +4,7 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
+import { frequencyToEnglish, frequencyToArabic } from "@/lib/validation/contracts";
 
 async function assertCanAccessProperty(ds: any, user: any, propertyId: string) {
   const userType = String(user.userType ?? "");
@@ -96,10 +97,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const safeContracts = contracts.map((c: any) =>
         sanitizeContractForOwner(c as Record<string, unknown>, payMap[String(c.id)] ?? [])
       );
-      return ok({ ...(property as any), units, contracts: safeContracts, payments: [], revenues, expenses });
+      return ok({
+        ...(property as any),
+        units,
+        contracts: safeContracts,
+        payments: [],
+        revenues,
+        expenses,
+        payment_frequency: frequencyToArabic((property as any).payment_frequency),
+      });
     }
 
-    return ok({ ...(property as any), units, contracts, payments, revenues, expenses });
+    return ok({
+      ...(property as any),
+      units,
+      contracts,
+      payments,
+      revenues,
+      expenses,
+      payment_frequency: frequencyToArabic((property as any).payment_frequency),
+    });
   } catch (err) {
     return serverError(err);
   }
@@ -152,6 +169,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     ];
     for (const f of fields) {
       if (body[f] !== undefined) updates[f] = body[f];
+    }
+    // Canonical English storage — map any Arabic frequency sent by the UI
+    if (updates.payment_frequency != null) {
+      updates.payment_frequency = frequencyToEnglish(String(updates.payment_frequency));
     }
 
     await repo.update(id, updates);

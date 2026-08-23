@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
+import { notifications } from "@/lib/notifications";
 
 /**
  * POST /api/automation/run
@@ -21,7 +22,6 @@ export async function POST(req: NextRequest) {
     const ds = await getDataSource();
     const agencyId = String(user.userId);
     const today = new Date().toISOString().split("T")[0];
-    const todayIso = new Date().toISOString();
 
     const results: Record<string, number> = {};
 
@@ -127,6 +127,22 @@ export async function POST(req: NextRequest) {
       } as any);
       await taskRepo.save(task);
       tasksCreated++;
+      // Notify the agency on every newly detected 30-day expiry
+      await notifications
+        .dispatch({
+          type: "contract.renewal_due",
+          recipientId: agencyId,
+          actorId: agencyId,
+          officeId: user.officeId ? String(user.officeId) : "",
+          priority: "high",
+          channels: [],
+          metadata: {
+            contractId,
+            expiryDate: endDateStr,
+            unitNumber: String(row.unit_id ?? ""),
+          },
+        })
+        .catch(() => {});
     }
     results.tasksCreated = tasksCreated;
 

@@ -13,7 +13,8 @@ jobs:
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+        # appleboy/ssh-action v1.2.0 — pinned to commit SHA for supply-chain integrity
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}

@@ -6,6 +6,7 @@ import { Navbar } from "@/components/landing/Navbar";
 export function NavbarGate() {
   const pathname = usePathname();
   const hide =
+    pathname === "/" ||
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/agency") ||
     pathname.startsWith("/admin") ||

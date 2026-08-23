@@ -1,128 +1,103 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
+import { ok, badRequest } from "@/lib/api-helpers";
+import {
+  withAuth,
+  resolveContext,
+  assertUnitAccess,
+  requireCapability,
+  type UnitContext,
+} from "@/lib/auth/scope";
 
-async function assertCanAccessUnit(ds: any, user: any, unitId: string) {
-  const userType = String(user.userType ?? "");
-  const repo = ds.getRepository("Unit");
-  const unit = await repo.findOne({ where: { id: unitId } as any });
-  if (!unit) return false;
-  if (userType !== "agency") {
-    return String((unit as any).owner_id) === String(user.userId);
-  }
-  const agencyId = String(user.userId);
-  const officeId = user.officeId ? String(user.officeId) : null;
-  const pid = String((unit as any).property_id ?? "");
-  if (!pid) return false;
-  if (officeId) {
-    const linked = await ds.query(
-      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
-      [officeId, pid]
-    );
-    if (Array.isArray(linked) && linked.length > 0) return true;
-  }
-  const rows = await ds.query(
-    `SELECT 1 AS ok FROM properties p
-     WHERE p.id = $1 AND p.deleted_at IS NULL
-       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = p.owner_id
-           AND u.created_by_agency_id = $2
-           AND u.deleted_at IS NULL
-       ))
-     LIMIT 1`,
-    [pid, agencyId]
-  );
-  return Array.isArray(rows) && rows.length > 0;
-}
+/**
+ * Units routes — scoped via @/lib/auth/scope.
+ * assertUnitAccess already throws AuthError(404) when the unit is missing or
+ * the caller has no access, so handlers can rely on ctx.unitId/ctx.propertyId
+ * without re-checking existence.
+ */
+const UNIT_UPDATE_FIELDS = [
+  "label",
+  "unit_type",
+  "floor",
+  "area_sqm",
+  "rent_amount",
+  "status",
+  "description",
+  "last_ac_service_date",
+  "last_plumbing_check_date",
+  "last_electrical_check_date",
+  "maintenance_risk_score",
+  "maintenance_risk_level",
+];
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    const readOnly = denyIfOwnerCannotMutateProperties(user);
-    if (readOnly) return readOnly;
-
-    const { id } = await params;
-    const body = await req.json();
+export const GET = withAuth<UnitContext, { id: string }>(
+  async (_req, { params }) =>
+    assertUnitAccess(await resolveContext(), String((await params).id)),
+  async (ctx) => {
     const ds = await getDataSource();
-    const repo = ds.getRepository("Unit");
-
-    const unit = await repo.findOne({ where: { id } as any });
-    if (!unit) return unauthorized();
-    if (!(await assertCanAccessUnit(ds, user, id))) return unauthorized();
-
-    const updates: Record<string, any> = {};
-    const fields = ["label", "unit_type", "floor", "area_sqm", "rent_amount", "status", "description"];
-    for (const f of fields) {
-      if (body[f] !== undefined) updates[f] = body[f];
-    }
-    // Accept area_m2 as alias for area_sqm
-    if (body.area_m2 !== undefined && body.area_sqm === undefined) {
-      updates.area_sqm = body.area_m2;
-    }
-
-    await repo.update(id, updates);
-    const updated = await repo.findOne({ where: { id } as any });
-    return ok(updated);
-  } catch (err) {
-    return serverError(err);
+    const unit = await ds.getRepository("Unit").findOne({
+      where: { id: ctx.unitId },
+      relations: ["property", "owner"],
+    });
+    const contracts = await ds
+      .getRepository("Contract")
+      .find({ where: { unit_id: ctx.unitId } as any, order: { start_date: "DESC" } as any });
+    return ok({ data: { ...unit, contracts } });
   }
-}
+);
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const mutateResolver = async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  const ctx = await resolveContext();
+  requireCapability(ctx, "properties_mutate");
+  return assertUnitAccess(ctx, String((await params).id));
+};
+
+function parseBody(body: string) {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    const readOnly = denyIfOwnerCannotMutateProperties(user);
-    if (readOnly) return readOnly;
-
-    const { id } = await params;
-    const body = await req.json();
-    const ds = await getDataSource();
-    const repo = ds.getRepository("Unit");
-
-    const unit = await repo.findOne({ where: { id } as any });
-    if (!unit) return unauthorized();
-    if (!(await assertCanAccessUnit(ds, user, id))) return unauthorized();
-
-    const updates: Record<string, any> = {};
-    const fields = ["label", "unit_type", "floor", "area_sqm", "rent_amount", "status", "description"];
-    for (const f of fields) {
-      if (body[f] !== undefined) updates[f] = body[f];
-    }
-    if (body.area_m2 !== undefined && body.area_sqm === undefined) {
-      updates.area_sqm = body.area_m2;
-    }
-
-    await repo.update(id, updates);
-    const updated = await repo.findOne({ where: { id } as any });
-    return ok(updated);
-  } catch (err) {
-    return serverError(err);
+    return JSON.parse(body);
+  } catch {
+    return null;
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    const readOnly = denyIfOwnerCannotMutateProperties(user);
-    if (readOnly) return readOnly;
-
-    const { id } = await params;
-    const ds = await getDataSource();
-    const repo = ds.getRepository("Unit");
-
-    const unit = await repo.findOne({ where: { id } as any });
-    if (!unit) return unauthorized();
-    if (!(await assertCanAccessUnit(ds, user, id))) return unauthorized();
-
-    await repo.delete(id);
-    return ok({ success: true });
-  } catch (err) {
-    return serverError(err);
+function pickUpdates(body: Record<string, unknown>) {
+  const updates: Record<string, unknown> = {};
+  for (const f of UNIT_UPDATE_FIELDS) {
+    if (body[f] !== undefined) updates[f] = body[f];
   }
+  // Accept area_m2 as alias for area_sqm (existing behavior)
+  if (body.area_m2 !== undefined && body.area_sqm === undefined) {
+    updates.area_sqm = body.area_m2;
+  }
+  return updates;
 }
+
+export const PUT = withAuth<UnitContext, { id: string }>(mutateResolver, async (ctx, req) => {
+  const body = parseBody(await req.text().catch(() => ""));
+  if (!body || typeof body !== "object") return badRequest("البيانات مطلوبة");
+
+  const ds = await getDataSource();
+  const updates = pickUpdates(body as Record<string, unknown>);
+  await ds.getRepository("Unit").update(ctx.unitId, updates);
+  const updated = await ds.getRepository("Unit").findOne({ where: { id: ctx.unitId } });
+  return ok(updated);
+});
+
+// PATCH kept for existing frontend consumers (useBuilding.ts, ServiceLogForm.tsx)
+export const PATCH = withAuth<UnitContext, { id: string }>(mutateResolver, async (ctx, req) => {
+  const body = parseBody(await req.text().catch(() => ""));
+  if (!body || typeof body !== "object") return badRequest("البيانات مطلوبة");
+
+  const ds = await getDataSource();
+  const updates = pickUpdates(body as Record<string, unknown>);
+  await ds.getRepository("Unit").update(ctx.unitId, updates);
+  const updated = await ds.getRepository("Unit").findOne({ where: { id: ctx.unitId } });
+  return ok(updated);
+});
+
+export const DELETE = withAuth<UnitContext, { id: string }>(mutateResolver, async (ctx) => {
+  const ds = await getDataSource();
+  await ds.getRepository("Unit").delete(ctx.unitId);
+  return ok({ success: true });
+});

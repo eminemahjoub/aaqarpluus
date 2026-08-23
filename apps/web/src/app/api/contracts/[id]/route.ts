@@ -1,172 +1,158 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
-import { denyIfOwnerCannotManageTenantContracts } from "@/lib/mutate-guard";
+import { ok, badRequest } from "@/lib/api-helpers";
+import {
+  withAuth,
+  resolveContext,
+  assertContractAccess,
+  requireCapability,
+  type ContractContext,
+} from "@/lib/auth/scope";
 import { ownerHidesTenantPii, paymentsByContractId, sanitizeContractForOwner } from "@/lib/owner-tenant-privacy";
+import { frequencyToEnglish, frequencyToArabic } from "@/lib/validation/contracts";
 
-async function assertCanAccessContract(ds: any, user: any, contract: any) {
-  const userType = String(user.userType ?? "");
-  if (userType !== "agency") {
-    return String((contract as any).owner_id) === String(user.userId);
-  }
-  const agencyId = String(user.userId);
-  const officeId = user.officeId ? String(user.officeId) : null;
-  const pid = String((contract as any).property_id ?? "");
-  if (!pid) return false;
-  if (officeId) {
-    const linked = await ds.query(
-      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
-      [officeId, pid]
-    );
-    return Array.isArray(linked) && linked.length > 0;
-  }
-  const rows = await ds.query(
-    `SELECT 1 AS ok FROM properties p
-     WHERE p.id = $1 AND p.deleted_at IS NULL
-       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = p.owner_id
-           AND u.created_by_agency_id = $2
-           AND u.deleted_at IS NULL
-       ))
-     LIMIT 1`,
-    [pid, agencyId]
-  );
-  return Array.isArray(rows) && rows.length > 0;
-}
+/**
+ * Contracts routes — scoped via @/lib/auth/scope.
+ * assertContractAccess already throws AuthError(404) when the contract is
+ * missing or the caller has no access, so handlers rely on ctx.contractId /
+ * ctx.unitId / ctx.propertyId without re-checking existence.
+ *
+ * Response shape note: GET returns the contract object directly (not wrapped in
+ * { data }) — the dashboard edit-contract modal reads fields from the JSON root.
+ */
+const CONTRACT_UPDATE_FIELDS = [
+  "status",
+  "start_date",
+  "end_date",
+  "unit_id",
+  "contact_id",
+  "extra",
+  "rent_total_sar",
+  "rent_amount_sar",
+  "notes",
+  "payment_frequency",
+  "installments_count",
+];
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const contractResolver = async (_req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+  const ctx = await resolveContext();
+  requireCapability(ctx, "contracts_mutate");
+  return assertContractAccess(ctx, String((await params).id));
+};
+
+function parseBody(body: string) {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-
-    const { id } = await params;
-    const ds = await getDataSource();
-
-    const contract = await ds
-      .getRepository("Contract")
-      .createQueryBuilder("c")
-      .leftJoinAndSelect("c.contact", "contact")
-      .leftJoinAndSelect("c.unit", "unit")
-      .leftJoinAndSelect("c.property", "property")
-      .where("c.id = :id", { id })
-      .getOne();
-
-    if (!contract) return unauthorized();
-    if (!(await assertCanAccessContract(ds, user, contract))) return unauthorized();
-    if (!ownerHidesTenantPii(user)) return ok(contract);
-
-    const payMap = await paymentsByContractId(ds, [String(id)]);
-    return ok(sanitizeContractForOwner(contract as Record<string, unknown>, payMap[String(id)] ?? []));
-  } catch (err) {
-    return serverError(err);
+    return JSON.parse(body);
+  } catch {
+    return null;
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    const denied = denyIfOwnerCannotManageTenantContracts(user);
-    if (denied) return denied;
+function pickUpdates(body: Record<string, unknown>) {
+  const updates: Record<string, unknown> = {};
+  for (const f of CONTRACT_UPDATE_FIELDS) {
+    if (body[f] !== undefined) updates[f] = body[f];
+  }
+  return updates;
+}
 
-    const { id } = await params;
-    const body = await req.json();
+export const GET = withAuth<ContractContext, { id: string }>(
+  async (_req, { params }) =>
+    assertContractAccess(await resolveContext(), String((await params).id)),
+  async (ctx) => {
     const ds = await getDataSource();
-    const repo = ds.getRepository("Contract");
+    const contract = await ds.getRepository("Contract").findOne({
+      where: { id: ctx.contractId },
+      relations: ["contact", "unit", "property"],
+    });
+    const payments = await ds
+      .getRepository("ContractPayment")
+      .find({ where: { contract_id: ctx.contractId } as any, order: { due_date: "ASC" } as any });
 
-    const contract = await repo.findOne({ where: { id } as any });
-    if (!contract) return unauthorized();
-    if (!(await assertCanAccessContract(ds, user, contract))) return unauthorized();
-
-    const updates: Record<string, any> = {};
-    const fields = [
-      "status",
-      "start_date",
-      "end_date",
-      "unit_id",
-      "contact_id",
-      "extra",
-      "rent_total_sar",
-      "rent_amount_sar",
-      "notes",
-      "payment_frequency",
-    ];
-    for (const f of fields) {
-      if (body[f] !== undefined) updates[f] = body[f];
+    if (ownerHidesTenantPii({ userType: ctx.userType })) {
+      const payMap = await paymentsByContractId(ds, [ctx.contractId]);
+      const safe = sanitizeContractForOwner(contract as Record<string, unknown>, payMap[ctx.contractId] ?? []);
+      safe.payment_frequency = frequencyToArabic(safe.payment_frequency as string | null | undefined) as any;
+      return ok(safe);
     }
 
-    await repo.update(id, updates);
+    return ok({
+      ...contract,
+      payments,
+      payment_frequency: frequencyToArabic((contract as any).payment_frequency),
+    });
+  }
+);
 
-    if (Array.isArray(body.payments)) {
-      await ds.getRepository("ContractPayment").delete({ contract_id: id } as any);
-      const payRepo = ds.getRepository("ContractPayment");
-      for (const p of body.payments) {
-        if (!p?.due_date || Number(p?.amount_sar) <= 0) continue;
-        const payment = payRepo.create({
-          contract_id: id,
-          amount_sar: Number(p.amount_sar),
-          due_date: p.due_date,
-          status: p.status ?? "pending",
-          notes: p.notes ?? null,
-        } as any);
-        await payRepo.save(payment);
+export const PUT = withAuth<ContractContext, { id: string }>(contractResolver, async (ctx, req) => {
+  const body = parseBody(await req.text().catch(() => ""));
+  if (!body || typeof body !== "object") return badRequest("البيانات مطلوبة");
+
+  const ds = await getDataSource();
+  const repo = ds.getRepository("Contract");
+  const contract = await repo.findOne({ where: { id: ctx.contractId } });
+
+  const updates = pickUpdates(body as Record<string, unknown>);
+  // Canonical English storage — map any Arabic frequency sent by the UI
+  if (updates.payment_frequency != null) {
+    updates.payment_frequency = frequencyToEnglish(String(updates.payment_frequency));
+  }
+  await repo.update(ctx.contractId, updates);
+
+  if (Array.isArray((body as any).payments)) {
+    await ds.getRepository("ContractPayment").delete({ contract_id: ctx.contractId } as any);
+    const payRepo = ds.getRepository("ContractPayment");
+    for (const p of (body as any).payments) {
+      if (!p?.due_date || Number(p?.amount_sar) <= 0) continue;
+      const payment = payRepo.create({
+        contract_id: ctx.contractId,
+        amount_sar: Number(p.amount_sar),
+        due_date: p.due_date,
+        status: p.status ?? "pending",
+        notes: p.notes ?? null,
+      } as any);
+      await payRepo.save(payment);
+    }
+  }
+
+  const updated = await repo.findOne({ where: { id: ctx.contractId } });
+
+  // Sync property status when contract status changes
+  const bodyStatus = (body as any).status;
+  if (bodyStatus && (contract as any).property_id) {
+    const propId = (contract as any).property_id;
+    if (bodyStatus === "active") {
+      await ds.getRepository("Property").update(propId, { status: "active" } as any);
+    } else if (bodyStatus === "cancelled" || bodyStatus === "expired" || bodyStatus === "ended") {
+      // Check if any other active contract exists for this property
+      const otherActive = await ds
+        .getRepository("Contract")
+        .createQueryBuilder("c")
+        .where("c.property_id = :propId", { propId })
+        .andWhere("c.id != :contractId", { contractId: ctx.contractId })
+        .andWhere("c.status = :status", { status: "active" })
+        .getCount();
+      if (otherActive === 0) {
+        await ds.getRepository("Property").update(propId, { status: "vacant" } as any);
       }
     }
-
-    const updated = await repo.findOne({ where: { id } as any });
-
-    // Sync property status when contract status changes
-    if (body.status && (contract as any).property_id) {
-      const propId = (contract as any).property_id;
-      if (body.status === "active") {
-        await ds.getRepository("Property").update(propId, { status: "active" } as any);
-      } else if (body.status === "cancelled" || body.status === "expired" || body.status === "ended") {
-        // Check if any other active contract exists for this property
-        const otherActive = await ds.getRepository("Contract").createQueryBuilder("c")
-          .where("c.property_id = :propId", { propId })
-          .andWhere("c.id != :id", { id })
-          .andWhere("c.status = :status", { status: "active" })
-          .getCount();
-        if (otherActive === 0) {
-          await ds.getRepository("Property").update(propId, { status: "vacant" } as any);
-        }
-      }
-    }
-
-    return ok(updated);
-  } catch (err) {
-    return serverError(err);
   }
-}
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    const denied = denyIfOwnerCannotManageTenantContracts(user);
-    if (denied) return denied;
+  return ok(updated);
+});
 
-    const { id } = await params;
-    const ds = await getDataSource();
-    const repo = ds.getRepository("Contract");
+export const DELETE = withAuth<ContractContext, { id: string }>(contractResolver, async (ctx) => {
+  const ds = await getDataSource();
+  const repo = ds.getRepository("Contract");
 
-    const contract = await repo.findOne({ where: { id } as any });
-    if (!contract) return unauthorized();
-    if (!(await assertCanAccessContract(ds, user, contract))) return unauthorized();
-
-    // Delete associated payments first
-    await ds.getRepository("ContractPayment").delete({ contract_id: id } as any);
-
-    // Free up the unit
-    if ((contract as any).unit_id) {
-      await ds.getRepository("Unit").update((contract as any).unit_id, { status: "vacant" } as any);
-    }
-
-    await repo.delete(id);
-    return ok({ success: true });
-  } catch (err) {
-    return serverError(err);
+  const contract = await repo.findOne({ where: { id: ctx.contractId } });
+  if (contract && (contract as any).unit_id) {
+    await ds.getRepository("Unit").update((contract as any).unit_id, { status: "vacant" } as any);
   }
-}
+
+  // No ON DELETE CASCADE on contract_payments.contract_id — delete explicitly.
+  await ds.getRepository("ContractPayment").delete({ contract_id: ctx.contractId } as any);
+  await repo.delete(ctx.contractId);
+  return ok({ success: true });
+});

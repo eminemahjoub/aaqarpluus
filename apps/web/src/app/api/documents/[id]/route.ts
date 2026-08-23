@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
-import { unlink } from "fs/promises";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError } from "@/lib/api-helpers";
 

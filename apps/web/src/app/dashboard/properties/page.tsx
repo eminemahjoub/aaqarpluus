@@ -9,9 +9,11 @@ import { hijriYmdFromGregorianYmd } from "@/lib/hijri";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
 import { useCanMutate } from "@/hooks/useCanMutate";
+import { PropertyForm, type PropertyFormData } from "@/components/properties/PropertyForm";
 import { OwnerContractSummaryCards } from "@/components/dashboard/OwnerContractSummaryCards";
 import type { OwnerContractSummary } from "@/lib/owner-tenant-privacy";
 import { formatDaysUntilAr } from "@/lib/owner-tenant-privacy";
+import { UnitMaintenanceWidget } from "@/components/maintenance/UnitMaintenanceWidget";
 import {
   Building2,
   Search,
@@ -1312,7 +1314,7 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
     title: property.title ?? property.name,
     lessorType: ((property as any).lessor_type === "office" ? "office" : "owner") as "owner" | "office",
     managingOfficeId: String((property as any).managing_office_id ?? ""),
-    paymentFrequency: String((property as any).payment_frequency ?? "شهري"),
+    paymentFrequency: String((property as any).payment_frequency ?? "monthly"),
     commissionPercent:
       (property as any).commission_percent != null && (property as any).commission_percent !== ""
         ? String((property as any).commission_percent)
@@ -1559,10 +1561,10 @@ function EditPropertyModal({ isOpen, onClose, property }: { isOpen: boolean; onC
                 onChange={(e) => setFormData({ ...formData, paymentFrequency: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
               >
-                <option value="شهري">شهري</option>
-                <option value="نصف سنوي">نصف سنوي</option>
-                <option value="ربع سنوي">ربع سنوي</option>
-                <option value="سنوي">سنوي</option>
+                <option value="monthly">شهري</option>
+                <option value="biannual">نصف سنوي</option>
+                <option value="quarterly">ربع سنوي</option>
+                <option value="annual">سنوي</option>
               </select>
             </div>
           </div>
@@ -2892,9 +2894,9 @@ function AddInsuranceModal({ isOpen, onClose, propertyId, onSuccess }: { isOpen:
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
             >
               <option value="لا تكرار">لا تكرار</option>
-              <option value="شهري">شهري</option>
-              <option value="ربع سنوي">ربع سنوي</option>
-              <option value="سنوي">سنوي</option>
+              <option value="monthly">شهري</option>
+              <option value="quarterly">ربع سنوي</option>
+              <option value="annual">سنوي</option>
             </select>
           </div>
         </div>
@@ -3090,9 +3092,10 @@ function OfferPriceModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onCl
               onChange={(e) => setFormData({ ...formData, paymentPeriod: e.target.value })}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm focus:border-indigo-500 focus:outline-none dark:border-emerald-800/50 dark:bg-[#1a3528] dark:text-white"
             >
-              <option value="شهري">شهري</option>
-              <option value="ربع سنوي">ربع سنوي</option>
-              <option value="نصف سنوي">نصف سنوي</option>
+              <option value="monthly">شهري</option>
+              <option value="quarterly">ربع سنوي</option>
+              <option value="biannual">نصف سنوي</option>
+              <option value="annual">سنوي</option>
               <option value="سنوي">سنوي</option>
             </select>
           </div>
@@ -3213,6 +3216,50 @@ export function PropertiesContent() {
   const handleAddPropertyChoice = () => {
     setShowAddChoice(false);
     setShowAddProperty(true);
+  };
+
+  const [propertySubmitting, setPropertySubmitting] = useState(false);
+  const handleAddPropertySubmit = async (data: PropertyFormData) => {
+    setPropertySubmitting(true);
+    try {
+      const body: Record<string, unknown> = {
+        owner_id: data.owner_id || undefined,
+        name: data.title,
+        title: data.title,
+        region: data.region ?? null,
+        city: data.city ?? null,
+        neighborhood: data.neighborhood ?? null,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        area_m2: data.area_m2,
+        floors_count: data.floors_count,
+        apartments_count: data.apartments_count ?? 0,
+        shops_count: data.shops_count ?? 0,
+        other_units_count: data.other_units_count ?? 0,
+        payment_frequency: data.payment_frequency,
+        lessor_type:
+          data.lessor_type && ["office", "owner"].includes(data.lessor_type) ? data.lessor_type : null,
+        commission_percent: data.commission_percent,
+        water_account: data.water_account ?? null,
+        electricity_account: data.electricity_account ?? null,
+        title_deed_number: data.title_deed_number ?? null,
+      };
+      const res = await authFetch("/api/properties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        // surface via an inline alert only; keep the modal open state changes consistent
+        window.alert(String(errBody?.error ?? "تعذر إضافة العقار"));
+        return;
+      }
+      setShowAddProperty(false);
+    } finally {
+      setPropertySubmitting(false);
+      void loadProperties();
+    }
   };
 
   const handleDeleteProperty = (propertyId: string) => {
@@ -3367,17 +3414,17 @@ export function PropertiesContent() {
         onClose={() => setShowAddChoice(false)}
         onSelect={handleAddPropertyChoice}
       />
-      {/* TODO: AddComplexModal kept for backwards compatibility; not reachable from UI */}
       <AddComplexModal
         isOpen={showAddComplex}
         onClose={() => setShowAddComplex(false)}
       />
-      <AddPropertyModal
-        isOpen={showAddProperty}
-        onClose={() => {
-          setShowAddProperty(false);
-          void loadProperties();
-        }}
+      {/* Day 3 extraction: inline AddPropertyModal replaced by components/properties/PropertyForm.
+          The legacy modal function remains defined until Day 5 removes it. */}
+      <PropertyForm
+        open={showAddProperty}
+        onClose={() => setShowAddProperty(false)}
+        onSubmit={handleAddPropertySubmit}
+        isSubmitting={propertySubmitting}
         userType={userType}
       />
     </div>
@@ -4985,6 +5032,8 @@ function PropertyDetail({
                           </div>
                         </div>
                       )}
+
+                      <UnitMaintenanceWidget unitId={unit.id} />
                     </div>
                   </div>
                 );

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Receipt } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function TenantDashboardPage() {
   const router = useRouter();
@@ -68,6 +70,23 @@ export default function TenantDashboardPage() {
               طلب صيانة
             </Link>
           </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Link
+            href="/tenant/receipts"
+            className="transition-transform hover:scale-[1.01]"
+          >
+            <Card className="h-full cursor-pointer transition-colors hover:border-emerald-500">
+              <CardHeader>
+                <Receipt className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                <CardTitle className="text-gray-900 dark:text-white">إيصالات السداد</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-500 dark:text-gray-400">عرض وتحميل إيصالات الدفع</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow-sm dark:border dark:border-emerald-800/30 dark:bg-[#132a1f]">

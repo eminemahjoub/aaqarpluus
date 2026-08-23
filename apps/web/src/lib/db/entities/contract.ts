@@ -21,6 +21,8 @@ export const ContractSchema = schema({
     installments_count: { type: "int", nullable: true },
     status: { type: "varchar", length: 50, default: "active" },
     notes: { type: "text", nullable: true },
+    contract_number: { type: "varchar", length: 50, nullable: true },
+    office_id: { type: "uuid", nullable: true },
     extra: { type: "jsonb", nullable: true },
     deleted_at: { type: "timestamp", nullable: true },
     created_at: { type: "timestamp", createDate: true },

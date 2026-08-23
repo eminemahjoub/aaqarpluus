@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function ForgotPasswordPage() {
   return (
     <AuthLayout title="نسيت كلمة المرور؟" subtitle="أدخل بريدك لإرسال رابط الاستعادة">
-      <ForgotPasswordForm />
+      <Suspense fallback={<p className="text-center text-sm text-gray-500">جاري التحميل...</p>}>
+        <ForgotPasswordForm />
+      </Suspense>
     </AuthLayout>
   );
 }

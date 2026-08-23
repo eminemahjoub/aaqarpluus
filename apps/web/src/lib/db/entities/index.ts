@@ -137,6 +137,7 @@ export const ContractPaymentSchema = schema({
     due_date: { type: "date", nullable: true },
     paid_at: { type: "timestamp", nullable: true },
     status: { type: "varchar", length: 50, default: "pending" },
+    payment_method: { type: "varchar", length: 50, default: "cash" },
     notes: { type: "text", nullable: true },
     created_at: { type: "timestamp", createDate: true },
     updated_at: { type: "timestamp", updateDate: true },
@@ -193,5 +194,31 @@ export const PropertyImageSchema = schema({
     owner: { type: "many-to-one", target: "User", joinColumn: { name: "owner_id" } },
     property: { type: "many-to-one", target: "Property", joinColumn: { name: "property_id" }, nullable: true },
     unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, nullable: true },
+  },
+});
+
+export const MaintenancePredictionSchema = schema({
+  name: "MaintenancePrediction",
+  tableName: "maintenance_predictions",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    unit_id: { type: "uuid" },
+    prediction_date: { type: "date" },
+    risk_score: { type: "int" },
+    risk_level: { type: "varchar", length: 50 }, // low|medium|high|critical
+    predicted_failure_type: { type: "varchar", length: 50 }, // ac|plumbing|electrical|general
+    predicted_failure_date: { type: "date", nullable: true },
+    suggested_action: { type: "text" },
+    estimated_cost_sar: { type: "numeric", precision: 14, scale: 2, nullable: true },
+    is_resolved: { type: "boolean", default: false },
+    resolved_at: { type: "timestamp", nullable: true },
+    created_at: { type: "timestamp", createDate: true },
+    updated_at: { type: "timestamp", updateDate: true },
+  },
+  indices: [
+    { name: "idx_maintenance_predictions_unit_id", columns: ["unit_id"] as string[] },
+  ],
+  relations: {
+    unit: { type: "many-to-one", target: "Unit", joinColumn: { name: "unit_id" }, onDelete: "CASCADE" },
   },
 });

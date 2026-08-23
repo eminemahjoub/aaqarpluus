@@ -1,49 +1,50 @@
-import type { Metadata } from "next";
-import { MarketingShell } from "@/components/landing/MarketingShell";
-import { Hero } from "@/components/landing/Hero";
-import { Features } from "@/components/landing/Features";
-import { DashboardPreview } from "@/components/landing/DashboardPreview";
-import { Benefits } from "@/components/landing/Benefits";
-import { Pricing } from "@/components/landing/Pricing";
-import { Testimonials } from "@/components/landing/Testimonials";
-import { CTA } from "@/components/landing/CTA";
+import { Navbar } from "@/components/homestack/Navbar";
+import { Hero } from "@/components/homestack/Hero";
+import { SocialProof } from "@/components/homestack/SocialProof";
+import { Stats } from "@/components/homestack/Stats";
+import { HowItWorks } from "@/components/homestack/HowItWorks";
+import { Features } from "@/components/homestack/Features";
+import { Benefits } from "@/components/homestack/Benefits";
+import { Cities } from "@/components/homestack/Cities";
+import { Security } from "@/components/homestack/Security";
+import { Pricing } from "@/components/homestack/Pricing";
+import { FAQ } from "@/components/homestack/FAQ";
+import { DemoRequest } from "@/components/homestack/DemoRequest";
+import { Updates } from "@/components/homestack/Updates";
+import { FinalCTA } from "@/components/homestack/FinalCTA";
+import { Footer } from "@/components/homestack/Footer";
+import { getLandingStats } from "@/lib/landing-stats";
 
-export const metadata: Metadata = {
-  title: {
-    default: "عقار بلس | نظام إدارة عقارات ذكي",
-    template: "%s | عقار بلس",
-  },
-  description:
-    "منصة عقارية فاخرة لإدارة المحافظ والعقود والتحصيل — للشركات العقارية في السعودية.",
-  keywords: [
-    "إدارة عقارات",
-    "عقار بلس",
-    "السعودية",
-    "نظام عقاري",
-    "تحصيل إيجارات",
-  ],
-  openGraph: {
-    title: "عقار بلس — نظام إدارة عقارات ذكي",
-    description:
-      "ثقة وفخامة وذكاء تشغيلي لشركات العقار في المملكة.",
-    locale: "ar_SA",
-    type: "website",
-  },
-  robots: { index: true, follow: true },
-};
+export const revalidate = 300;
 
-export default function MarketingPage() {
+export default async function AqarPlusLandingPage() {
+  const stats = await getLandingStats();
+
   return (
-    <MarketingShell mainId="main-content">
-      <main id="main-content" tabIndex={-1}>
+    <>
+      <a
+        href="#main-content"
+        className="fixed start-4 top-4 z-[100] -translate-y-20 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground opacity-0 transition focus:translate-y-0 focus:opacity-100"
+      >
+        تخطي إلى المحتوى
+      </a>
+      <Navbar />
+      <main id="main-content" tabIndex={-1} className="bg-white">
         <Hero />
+        <SocialProof />
+        <Stats stats={stats} />
+        <HowItWorks />
         <Features />
-        <DashboardPreview />
         <Benefits />
+        <Cities cities={stats.cities} />
+        <Security />
         <Pricing />
-        <Testimonials />
-        <CTA />
+        <FAQ />
+        <DemoRequest />
+        <Updates />
+        <FinalCTA />
       </main>
-    </MarketingShell>
+      <Footer />
+    </>
   );
 }

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { authInputClass, authLabelClass } from "./auth-input-classes";
 
@@ -14,7 +13,6 @@ const USER_TYPES = [
 export type UserTypeValue = (typeof USER_TYPES)[number]["value"];
 
 export function SignupForm() {
-  const router = useRouter();
   const [fullName, setFullName] = React.useState("");
   const [phone, setPhone] = React.useState("");
   const [email, setEmail] = React.useState("");

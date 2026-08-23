@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AppError } from "@/lib/errors";
 
 export const SaudiPhoneSchema = z
   .string()
@@ -22,5 +23,22 @@ export function badZod(error: z.ZodError) {
   // Keep it simple for UI: first issue message
   const first = error.issues?.[0]?.message ?? "بيانات غير صحيحة";
   return first;
+}
+
+/**
+ * AppError with the standard API validation shape:
+ * 400 { error: "Validation failed", details: [{ path, message }, ...] }
+ */
+export function validationFailed(error: z.ZodError): AppError {
+  const details = error.issues.map((i) => ({
+    path: i.path.join("."),
+    message: i.message,
+  }));
+  return new AppError({
+    status: 400,
+    code: "VALIDATION_ERROR",
+    message: "Validation failed",
+    details,
+  });
 }
 

@@ -1,11 +1,11 @@
 import { readFileSync } from "fs";
-import { join } from "path";
 import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
 type ReceiptPdfInput = {
   contract: any;
   payment: any;
+  zatcaQR?: string;
 };
 
 function loadFont(doc: PDFDocument): Promise<PDFFont> {
@@ -39,46 +39,13 @@ function formatCurrency(value: number | string | null | undefined) {
   return `${amount.toLocaleString("ar-SA")} ر.س`;
 }
 
-function drawText(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  x: number,
-  y: number,
-  size: number,
-  maxWidth: number,
-  color = rgb(0.08, 0.1, 0.09),
-) {
-  const lines: string[] = [];
-  for (const rawLine of String(text ?? "").split("\n")) {
-    let line = "";
-    for (const word of String(rawLine).split(" ")) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
-        line = candidate;
-      } else {
-        lines.push(line);
-        line = word;
-      }
-    }
-    if (line) lines.push(line);
-  }
-
-  let currentY = y;
-  for (const line of lines) {
-    page.drawText(line, { x, y: currentY, size, font, color });
-    currentY -= size * 1.55;
-  }
-  return currentY;
-}
-
 function drawLabelValue(page: PDFPage, font: PDFFont, label: string, value: string, x: number, y: number) {
   page.drawText(`${label}:`, { x, y, size: 11, font, color: rgb(0.2, 0.25, 0.22) });
   page.drawText(value, { x: x + 115, y, size: 11, font, color: rgb(0.08, 0.1, 0.09) });
 }
 
 export async function createPaymentReceiptPdfBytes(input: ReceiptPdfInput) {
-  const { contract, payment } = input;
+  const { contract, payment, zatcaQR } = input;
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
   const font = await loadFont(pdfDoc);
@@ -155,6 +122,29 @@ export async function createPaymentReceiptPdfBytes(input: ReceiptPdfInput) {
     font,
     color: rgb(0.25, 0.3, 0.27),
   });
+
+  // ZATCA QR code — rendered at the footer right side (2x2cm), per the
+  // visual spec, when the receipt was generated with an invoice.
+  if (zatcaQR) {
+    try {
+      const { default: QRCode } = await import("qrcode");
+      const dataUrl = await QRCode.toDataURL(zatcaQR, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 256,
+      });
+      const base64 = dataUrl.split(",")[1];
+      const pngBytes = Buffer.from(base64, "base64");
+      const png = await pdfDoc.embedPng(pngBytes);
+      const sizeCm = 2 * 28.35; // 2cm ≈ 56.7pt
+      const xQr = width - margin - sizeCm;
+      const yQr = margin + 6;
+      page.drawImage(png, { x: xQr, y: yQr, width: sizeCm, height: sizeCm });
+    } catch (err) {
+      // QR embedding failure must never fail receipt generation
+      console.error("[receipt-pdf] QR embedding failed:", err);
+    }
+  }
 
   return pdfDoc.save();
 }

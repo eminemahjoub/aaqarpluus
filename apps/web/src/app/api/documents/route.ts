@@ -1,57 +1,40 @@
 export const dynamic = "force-dynamic";
-import { NextRequest } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
-import { UuidSchema, badZod } from "@/lib/validation";
+import path from "path";
+import { randomUUID } from "crypto";
 import { z } from "zod";
+import { getDataSource } from "@/lib/db/data-source";
+import { ok, created } from "@/lib/api-helpers";
+import { badRequest } from "@/lib/errors";
+import { UuidSchema, badZod } from "@/lib/validation";
+import {
+  withAuth,
+  resolveContext,
+  assertPropertyAccess,
+  assertContractAccess,
+  requireCapability,
+  getPropertyIdsForContext,
+  type UserContext,
+} from "@/lib/auth/scope";
 
-async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
-  const userType = String(user.userType ?? "");
-  if (userType !== "agency") return null;
-  const agencyId = String(user.userId);
-  const rows = await ds.query(
-    `SELECT id FROM properties
-     WHERE deleted_at IS NULL
-       AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = owner_id
-           AND u.created_by_agency_id = $1
-           AND u.deleted_at IS NULL
-       ))`,
-    [agencyId]
-  );
-  const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
-  return ids.length > 0 ? ids : [];
-}
-
-async function assertCanAccessProperty(ds: any, user: any, propertyId: string) {
-  const userType = String(user.userType ?? "");
-  if (userType !== "agency") return true;
-  const agencyId = String(user.userId);
-  const officeId = user.officeId ? String(user.officeId) : null;
-  if (officeId) {
-    const linked = await ds.query(
-      "SELECT 1 AS ok FROM office_property_links WHERE office_id = $1 AND property_id = $2 LIMIT 1",
-      [officeId, propertyId]
-    );
-    if (Array.isArray(linked) && linked.length > 0) return true;
-  }
-  const rows = await ds.query(
-    `SELECT 1 AS ok FROM properties p
-     WHERE p.id = $1 AND p.deleted_at IS NULL
-       AND (p.created_by_agency_id = $2 OR p.owner_id = $2 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = p.owner_id
-           AND u.created_by_agency_id = $2
-           AND u.deleted_at IS NULL
-       ))
-     LIMIT 1`,
-    [propertyId, agencyId]
-  );
-  return Array.isArray(rows) && rows.length > 0;
-}
+/**
+ * Documents routes — scoped via @/lib/auth/scope.
+ *
+ * GET supports:
+ *  - legacy params: property_id / contract_id (asserted via scope helpers)
+ *  - new scope params: scope_type=property|contract|owner + scope_id
+ *    ("owner" scope: owners see their own docs; agencies see docs of owners
+ *    linked via office_owner_links; admin unrestricted)
+ *  - default listing preserves legacy behavior: owners see docs they uploaded,
+ *    offices see docs on accessible properties.
+ * Response is a direct array (frontend maps over res.json()).
+ *
+ * POST is the multipart file-upload endpoint: file + property_id (+ optional
+ * contract_id/category). The Document row metadata (file_name, public_url,
+ * object_path) is derived server-side — clients never supply paths. Uploads
+ * now require documents_mutate and real property access (the legacy check
+ * allowed any non-agency user to attach documents to arbitrary properties).
+ */
 
 const UploadMetaSchema = z.object({
   property_id: UuidSchema,
@@ -59,54 +42,100 @@ const UploadMetaSchema = z.object({
   category: z.string().trim().optional().nullable(),
 });
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
+const SCOPE_TYPES = ["property", "contract", "owner"] as const;
 
-    const { searchParams } = new URL(req.url);
-    const propertyId = searchParams.get("property_id");
-    const contractId = searchParams.get("contract_id");
-
+export const GET = withAuth<UserContext>(
+  async () => resolveContext(),
+  async (ctx, req) => {
     const ds = await getDataSource();
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    const qb = ds
+    const url = new URL(req.url);
+    const scopeType = url.searchParams.get("scope_type");
+    const scopeId = url.searchParams.get("scope_id");
+    const propertyId = url.searchParams.get("property_id");
+    const contractId = url.searchParams.get("contract_id");
+
+    let qb = ds
       .getRepository("Document")
       .createQueryBuilder("d")
       .leftJoinAndSelect("d.property", "property")
       .where("d.deleted_at IS NULL");
 
-    if (Array.isArray(propertyIds)) {
-      if (propertyIds.length === 0) return ok([]);
-      qb.andWhere("d.property_id IN (:...propertyIds)", { propertyIds });
-    } else {
-      qb.andWhere("d.owner_id = :ownerId", { ownerId: user.userId });
+    if (scopeType) {
+      if (!SCOPE_TYPES.includes(scopeType as any) || !scopeId) {
+        throw badRequest("scope_type/scope_id غير صالح");
+      }
+
+      if (scopeType === "property") {
+        await assertPropertyAccess(ctx, scopeId);
+        qb = qb.andWhere("d.property_id = :scopeId", { scopeId });
+      } else if (scopeType === "contract") {
+        await assertContractAccess(ctx, scopeId);
+        qb = qb.andWhere("d.contract_id = :scopeId", { scopeId });
+      } else {
+        // owner scope: self-scoped for owners/personal; agencies see docs of
+        // owners linked via office_owner_links; admin unrestricted.
+        if (ctx.role === "admin") {
+          // no extra filter
+        } else if (ctx.role === "owner") {
+          qb = qb.andWhere("d.owner_id = :ownerId", { ownerId: ctx.userId });
+        } else if (ctx.officeId) {
+          qb = qb.andWhere(
+            `d.owner_id = :selfId OR EXISTS (
+               SELECT 1 FROM office_owner_links l
+                WHERE l.office_id = :officeId AND l.owner_id = d.owner_id
+             )`,
+            { selfId: ctx.userId, officeId: ctx.officeId }
+          );
+        } else {
+          qb = qb.andWhere("d.owner_id = :selfId", { selfId: ctx.userId });
+        }
+        // Optional narrowing to a specific owner when scope_id differs from self
+        if (scopeId && scopeId !== ctx.userId) {
+          qb = qb.andWhere("d.owner_id = :scopeId", { scopeId });
+        }
+      }
+      return ok(await qb.orderBy("d.created_at", "DESC").getMany());
     }
 
-    if (propertyId) qb.andWhere("d.property_id = :propertyId", { propertyId });
-    if (contractId) qb.andWhere("d.contract_id = :contractId", { contractId });
+    if (contractId) {
+      await assertContractAccess(ctx, contractId);
+      return ok(await qb.andWhere("d.contract_id = :contractId", { contractId }).orderBy("d.created_at", "DESC").getMany());
+    }
 
-    const docs = await qb.orderBy("d.created_at", "DESC").getMany();
-    return ok(docs);
-  } catch (err) {
-    return serverError(err);
+    if (propertyId) {
+      await assertPropertyAccess(ctx, propertyId);
+      return ok(await qb.andWhere("d.property_id = :propertyId", { propertyId }).orderBy("d.created_at", "DESC").getMany());
+    }
+
+    // Default listing (legacy behavior)
+    if (ctx.role === "owner") {
+      qb = qb.andWhere("d.owner_id = :ownerId", { ownerId: ctx.userId });
+    } else {
+      const ids = await getPropertyIdsForContext(ctx);
+      if (ids !== null) {
+        if (ids.length === 0) return ok([]);
+        qb = qb.andWhere("d.property_id IN (:...ids)", { ids });
+      }
+    }
+
+    return ok(await qb.orderBy("d.created_at", "DESC").getMany());
   }
-}
+);
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-
+export const POST = withAuth<UserContext>(
+  async () => {
+    const ctx = await resolveContext();
+    requireCapability(ctx, "documents_mutate");
+    return ctx;
+  },
+  async (ctx, req) => {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const propertyId = formData.get("property_id") as string | null;
     const contractId = formData.get("contract_id") as string | null;
     const category = formData.get("category") as string | null;
 
-    if (!file) {
-      return badRequest("الملف مطلوب");
-    }
+    if (!file) throw badRequest("الملف مطلوب");
 
     const ds = await getDataSource();
     const metaParsed = UploadMetaSchema.safeParse({
@@ -114,22 +143,36 @@ export async function POST(req: NextRequest) {
       contract_id: contractId || null,
       category: category || null,
     });
-    if (!metaParsed.success) return badRequest(badZod(metaParsed.error));
+    if (!metaParsed.success) throw badRequest(badZod(metaParsed.error));
 
     const pid = String(metaParsed.data.property_id);
-    const can = await assertCanAccessProperty(ds, user, pid);
-    if (!can) return unauthorized();
+    await assertPropertyAccess(ctx, pid);
+
     const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
-    if (!prop) return badRequest("العقار غير موجود");
+    if (!prop) throw badRequest("العقار غير موجود");
     const ownerId = String((prop as any).owner_id);
 
-    const uploadsDir = join(process.cwd(), "public", "uploads", ownerId);
+    // nosemgrep: path-join-resolve-traversal — ownerId is the DB UUID of the
+    // ownership-verified property; the resolved path is guard-checked below.
+    const uploadsDir = path.join(process.cwd(), "public", "uploads", ownerId); // nosemgrep: path-join-resolve-traversal
     await mkdir(uploadsDir, { recursive: true });
 
-    const timestamp = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const fileName = `${timestamp}_${safeName}`;
-    const filePath = join(uploadsDir, fileName);
+    // Server-generated on-disk name: the client-supplied name is never used as a
+    // path component. The original name is kept in the `file_name` DB field for
+    // display only. The extension is preserved (documents accept many file types)
+    // but constrained to a short alphanumeric suffix with no path separators.
+    const rawExt = path.extname(file.name).toLowerCase();
+    const extension = /^\.[a-zA-Z0-9]{1,10}$/.test(rawExt) ? rawExt : "";
+    const fileName = `${Date.now()}_${randomUUID()}${extension}`;
+    // Defense-in-depth: keep the final path inside the owner's upload directory.
+    // nosemgrep: path-join-resolve-traversal — fileName is server-generated
+    // (timestamp + UUID + constrained extension), so it cannot traverse; the
+    // guard below enforces this regardless.
+    const filePath = path.resolve(uploadsDir, fileName); // nosemgrep: path-join-resolve-traversal
+    // nosemgrep: path-join-resolve-traversal — this is the traversal guard itself.
+    if (!filePath.startsWith(path.resolve(uploadsDir) + path.sep)) {
+      throw badRequest("مسار الملف غير صالح");
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filePath, buffer);
@@ -145,7 +188,6 @@ export async function POST(req: NextRequest) {
     else type = "other";
 
     const repo = ds.getRepository("Document");
-
     const doc = repo.create({
       owner_id: ownerId,
       property_id: pid,
@@ -158,7 +200,6 @@ export async function POST(req: NextRequest) {
       type,
       category: metaParsed.data.category || null,
     } as any);
-
     await repo.save(doc);
 
     // Patch contract_id via raw SQL in case TypeORM entity metadata cache is stale
@@ -171,7 +212,5 @@ export async function POST(req: NextRequest) {
     }
 
     return created({ ...(doc as any), property: null });
-  } catch (err) {
-    return serverError(err);
   }
-}
+);

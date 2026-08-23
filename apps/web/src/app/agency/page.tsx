@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 import { AgencyDashboard } from "@/components/dashboard/AgencyDashboard";
 import { OwnerHomeDashboard } from "@/components/dashboard/OwnerHomeDashboard";
+import { PredictiveMaintenanceDashboard } from "@/components/maintenance/PredictiveMaintenanceDashboard";
 import { authFetch } from "@/lib/auth-fetch";
 
 export default function AgencyHome() {
@@ -42,6 +43,10 @@ export default function AgencyHome() {
       </div>
 
       <AgencyDashboard showHeader={false} />
+
+      <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 backdrop-blur-sm dark:border-emerald-800/30 dark:bg-[#102318]/50">
+        <PredictiveMaintenanceDashboard />
+      </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white/60 p-4 backdrop-blur-sm dark:border-emerald-800/30 dark:bg-[#102318]/50">
         <div className="mb-3 flex items-center justify-between gap-3">

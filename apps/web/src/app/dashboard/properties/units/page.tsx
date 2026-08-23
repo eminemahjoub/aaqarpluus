@@ -586,7 +586,7 @@ export default function UnitsBuilderPage() {
               }).then(async (r) => {
                 if (!r.ok) {
                   const errBody = await r.json().catch(() => null);
-                  console.error(`[units] POST failed status=${r.status}`, errBody, row);
+                  console.error("[units] POST failed", { status: r.status, errBody, row });
                   return null;
                 }
                 return r.json();

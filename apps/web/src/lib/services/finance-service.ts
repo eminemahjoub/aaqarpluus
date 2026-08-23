@@ -48,7 +48,7 @@ async function assertCanAccessProperty(ds: DataSource, user: any, propertyId: st
   return Array.isArray(rows) && rows.length > 0;
 }
 
-async function upsertCommissionExpense(ds: DataSource, revenue: any) {
+export async function upsertCommissionExpense(ds: DataSource, revenue: any) {
   const propertyId = revenue?.property_id ? String(revenue.property_id) : null;
   if (!propertyId) return;
 

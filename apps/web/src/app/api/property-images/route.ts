@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, created, serverError } from "@/lib/api-helpers";
+import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
@@ -115,21 +115,38 @@ export async function POST(req: NextRequest) {
     const ownerId = String((prop as any).owner_id);
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const ext = path.extname(file.name) || ".jpg";
-    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
+    const extension = path.extname(file.name).toLowerCase() || ".jpg";
+    const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"]);
+    if (!allowedExtensions.has(extension)) {
+      return badRequest("صيغة الصورة غير مدعومة");
+    }
+    // Server-generated name: the client-supplied file name is never used as an
+    // on-disk path component (only its validated extension suffix is kept).
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}${extension}`;
 
     // Store in /public/uploads/properties/<ownerId>/ or /public/uploads/units/<ownerId>/
     const subDir = unitId ? "units" : "properties";
+    // nosemgrep: path-join-resolve-traversal — ownerId is the DB UUID of the
+    // ownership-verified property and subDir is a fixed literal; the resolved path
+    // is guard-checked below.
     const uploadDir = path.join(
       process.cwd(),
       "public",
       "uploads",
       subDir,
-      ownerId,
+      ownerId, // nosemgrep: path-join-resolve-traversal
     );
     await mkdir(uploadDir, { recursive: true });
 
-    const filePath = path.join(uploadDir, safeName);
+    // Defense-in-depth: keep the final path inside the upload directory.
+    // nosemgrep: path-join-resolve-traversal — safeName is server-generated
+    // (timestamp + random + allowlist-validated extension), so it cannot traverse;
+    // the guard below enforces this regardless.
+    const filePath = path.resolve(uploadDir, safeName); // nosemgrep: path-join-resolve-traversal
+    // nosemgrep: path-join-resolve-traversal — this is the traversal guard itself.
+    if (!filePath.startsWith(path.resolve(uploadDir) + path.sep)) {
+      return badRequest("مسار الملف غير صالح");
+    }
     await writeFile(filePath, buffer);
 
     const publicUrl = `/uploads/${subDir}/${ownerId}/${safeName}`;

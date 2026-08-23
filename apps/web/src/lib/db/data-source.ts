@@ -22,11 +22,13 @@ import {
   ExpenseSchema,
   PropertyImageSchema,
   NotificationSchema,
+  MaintenancePredictionSchema,
 } from "./entities";
 import { FinancialAndMaintenance20260625000000 } from "@/migrations/20260625000000FinancialAndMaintenance";
 import { AddContactPinPlain20260626000000 } from "@/migrations/20260626000000AddContactPinPlain";
 import { AddContactUniqueConstraints20260627000000 } from "@/migrations/20260627000000AddContactUniqueConstraints";
 import { AddRevenuePaymentId20260629000000 } from "@/migrations/20260629000000AddRevenuePaymentId";
+import { AddMaintenancePredictionFields20260809000004 } from "@/migrations/20260809000004AddMaintenancePredictionFields";
 
 let dataSource: DataSource | null = null;
 let initPromise: Promise<DataSource> | null = null;
@@ -46,7 +48,7 @@ export async function getDataSource(): Promise<DataSource> {
         ssl: false,
         synchronize: process.env.DB_SYNCHRONIZE === "true",
         logging: process.env.NODE_ENV === "development" ? ["error"] : false,
-        migrations: [FinancialAndMaintenance20260625000000, AddContactPinPlain20260626000000, AddContactUniqueConstraints20260627000000, AddRevenuePaymentId20260629000000],
+        migrations: [FinancialAndMaintenance20260625000000, AddContactPinPlain20260626000000, AddContactUniqueConstraints20260627000000, AddRevenuePaymentId20260629000000, AddMaintenancePredictionFields20260809000004],
         entities: [
           UserSchema,
           OfficeSchema,
@@ -70,6 +72,7 @@ export async function getDataSource(): Promise<DataSource> {
           ExpenseSchema,
           PropertyImageSchema,
           NotificationSchema,
+          MaintenancePredictionSchema,
         ],
       });
 

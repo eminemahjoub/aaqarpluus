@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Phone, MoreHorizontal, User, Key } from "lucide-react";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { authFetch } from "@/lib/auth-fetch";
 import { ErrorState, PageLoading } from "@/components/ui/states";

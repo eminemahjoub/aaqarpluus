@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LayoutDashboard, LogOut, X } from "lucide-react";
 interface DashboardSidebarProps {
   onClose?: () => void;
@@ -11,7 +11,6 @@ interface DashboardSidebarProps {
 
 export function DashboardSidebar({ onClose }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [loggingOut, setLoggingOut] = React.useState(false);
 
   async function handleLogout() {

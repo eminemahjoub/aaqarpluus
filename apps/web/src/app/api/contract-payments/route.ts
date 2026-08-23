@@ -1,44 +1,50 @@
 export const dynamic = "force-dynamic";
-import { NextRequest } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
-import { getDataSource } from "@/lib/db/data-source";
-import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
+import path from "path";
 import { z } from "zod";
+import { getDataSource } from "@/lib/db/data-source";
+import { ok, created } from "@/lib/api-helpers";
+import { badRequest } from "@/lib/errors";
 import { UuidSchema, badZod } from "@/lib/validation";
 import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
 import { syncRevenueForPayment } from "@/lib/contract-payment-revenue";
 import { createPaymentReceiptPdfBytes } from "@/lib/receipt-pdf";
+import { generatePaymentSchedule } from "@/lib/auto-payments";
+import { paymentMethodSchema } from "@/lib/validation/payments";
+import {
+  withAuth,
+  resolveContext,
+  assertContractAccess,
+  requireCapability,
+  getPropertyIdsForContext,
+  AuthError,
+  type UserContext,
+} from "@/lib/auth/scope";
 
-async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
-  const userType = String(user.userType ?? "");
-  if (userType !== "agency") return null;
-  const agencyId = String(user.userId);
-  const officeId = user.officeId ? String(user.officeId) : null;
-  const rows = await ds.query(
-    `SELECT id FROM properties
-     WHERE deleted_at IS NULL
-       AND (created_by_agency_id = $1 OR owner_id = $1 OR EXISTS (
-         SELECT 1 FROM users u
-         WHERE u.id = owner_id
-           AND u.created_by_agency_id = $1
-           AND u.deleted_at IS NULL
-       )
-       ${officeId ? "OR EXISTS (SELECT 1 FROM office_property_links l WHERE l.property_id = properties.id AND l.office_id = $2)" : ""}
-       )`,
-    officeId ? [agencyId, officeId] : [agencyId]
-  );
-  const ids: string[] = Array.from(new Set((rows ?? []).map((r: any) => String(r.id)).filter(Boolean)));
-  return ids.length > 0 ? ids : [];
-}
+/**
+ * Contract payments collection routes — scoped via @/lib/auth/scope.
+ *
+ * GET: optional contract_id (assertContractAccess first); without it, listing
+ * scopes through the property chain (getPropertyIdsForContext) or, for
+ * owners, through contracts they own. Preserves legacy status/date filters,
+ * receipt_url resolution from documents, and the owner-PII summary shape
+ * ({ summary } / { summaries: [] }).
+ *
+ * POST: legacy body shapes (single item, array, or { batch: [...] }) are
+ * preserved for existing consumers; the new { contract_id, payments: [...] }
+ * shape is also accepted. Empty payments in the new shape auto-generates a
+ * schedule via generatePaymentSchedule (same generator used at contract
+ * creation). Legacy owner/personal deny is preserved via ownerHidesTenantPii.
+ */
 
 const PaymentItemSchema = z.object({
   contract_id: UuidSchema,
-  amount_sar: z.union([z.number(), z.string()]).optional().nullable(),
+  amount_sar: z.number().positive("المبلغ يجب أن يكون أكبر من صفر").optional().nullable(),
   due_date: z.string().optional().nullable(),
   paid_at: z.string().optional().nullable(),
   status: z.enum(["pending", "paid"]).optional().nullable(),
   notes: z.string().optional().nullable(),
+  payment_method: paymentMethodSchema.optional().nullable(),
 });
 
 const CreatePaymentsSchema = z.union([
@@ -47,15 +53,42 @@ const CreatePaymentsSchema = z.union([
   z.object({ batch: z.array(PaymentItemSchema) }),
 ]);
 
+// New shape: { contract_id, payments: [{ amount, due_date, payment_method? }] }
+const NewPaymentBodySchema = z.object({
+  contract_id: UuidSchema,
+  payments: z.array(
+    z.object({
+      amount: z.number().positive().optional(),
+      amount_sar: z.number().positive().optional(),
+      due_date: z.string().optional().nullable(),
+      payment_method: paymentMethodSchema.optional().nullable(),
+    })
+  ),
+});
+
 async function createReceiptDocument(ds: any, contract: any, payment: any) {
   const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment });
-  const uploadsDir = join(process.cwd(), "public", "uploads", String(contract.owner_id));
+  // nosemgrep: path-join-resolve-traversal — owner_id is a DB UUID from the
+  // ownership-verified contract; the resolved path is guard-checked below.
+  const uploadsDir = path.join(process.cwd(), "public", "uploads", String(contract.owner_id)); // nosemgrep: path-join-resolve-traversal
   await mkdir(uploadsDir, { recursive: true });
   const contractNumber = contract.extra && typeof contract.extra === "object"
     ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)
     : contract.id;
-  const fileName = `receipt_${payment.id}_${contractNumber}.pdf`;
-  const filePath = join(uploadsDir, fileName);
+  // Keep the `receipt_<paymentId>_` prefix: GET /api/contract-payments parses it
+  // (/^receipt_([^_]+)_/) to map payments to receipt URLs. payment.id is DB-issued;
+  // contractNumber comes from contract.extra (user-editable), so sanitize it.
+  const safeContractNumber = contractNumber.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
+  const fileName = `receipt_${String(payment.id)}_${safeContractNumber}.pdf`;
+  // Defense-in-depth: refuse to write outside the upload directory.
+  // nosemgrep: path-join-resolve-traversal — fileName is built from the DB-issued
+  // payment UUID and a sanitized contract number (alphanumeric only), so it cannot
+  // traverse; the guard below enforces this regardless.
+  const filePath = path.resolve(uploadsDir, fileName); // nosemgrep: path-join-resolve-traversal
+  // nosemgrep: path-join-resolve-traversal — this is the traversal guard itself.
+  if (!filePath.startsWith(path.resolve(uploadsDir) + path.sep)) {
+    throw new Error("Invalid receipt file path");
+  }
   await writeFile(filePath, Buffer.from(pdfBytes));
   const publicUrl = `/uploads/${contract.owner_id}/${fileName}`;
   const docRepo = ds.getRepository("Document");
@@ -76,37 +109,78 @@ async function createReceiptDocument(ds: any, contract: any, payment: any) {
   return doc;
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
+async function insertPaymentItems(ds: any, items: any[]) {
+  const repo = ds.getRepository("ContractPayment");
+  const saved = [];
+  for (const item of items) {
+    const cid = String(item.contract_id);
+    const payment = repo.create({
+      contract_id: cid,
+      amount_sar:
+        item.amount_sar != null && String(item.amount_sar).trim() !== "" ? Number(item.amount_sar) : 0,
+      due_date: item.due_date ?? null,
+      paid_at: item.paid_at ?? null,
+      status: item.status ?? "pending",
+      notes: item.notes ?? null,
+      payment_method: item.payment_method ?? "cash",
+    } as any);
+    await repo.save(payment);
+    if (String((payment as any).status) === "paid") {
+      const contract = await ds
+        .getRepository("Contract")
+        .createQueryBuilder("c")
+        .leftJoinAndSelect("c.contact", "contact")
+        .leftJoinAndSelect("c.property", "property")
+        .leftJoinAndSelect("c.unit", "unit")
+        .where("c.id = :id", { id: cid })
+        .getOne();
+      if (contract) {
+        await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
+          "payment_receipt",
+          `receipt_${(payment as any).id}_%`,
+        ]);
+        await createReceiptDocument(ds, contract, payment);
+        await syncRevenueForPayment(contract, payment, ds);
+      }
+    }
+    saved.push(payment);
+  }
+  return saved;
+}
 
-    const { searchParams } = new URL(req.url);
-    const contractId = searchParams.get("contract_id");
-    const status = searchParams.get("status");
-    const dateFrom = searchParams.get("date_from");
-    const dateTo = searchParams.get("date_to");
+export const GET = withAuth<UserContext>(
+  async () => resolveContext(),
+  async (ctx, req) => {
+    const url = new URL(req.url);
+    const contractId = url.searchParams.get("contract_id");
+    const status = url.searchParams.get("status");
+    const dateFrom = url.searchParams.get("date_from");
+    const dateTo = url.searchParams.get("date_to");
 
     const ds = await getDataSource();
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
+    if (contractId) await assertContractAccess(ctx, contractId);
 
-    if (Array.isArray(propertyIds) && propertyIds.length === 0) return ok([]);
+    let qb = ds.getRepository("ContractPayment").createQueryBuilder("cp");
+    if (contractId) {
+      qb = qb
+        .innerJoin("Contract", "c", "c.id = cp.contract_id")
+        .where("cp.contract_id = :contractId", { contractId });
+    } else if (ctx.role === "owner") {
+      // owners/personal: payments of contracts they own (legacy owner_id join)
+      qb = qb.innerJoin("Contract", "c", "c.id = cp.contract_id AND c.owner_id = :ownerId", {
+        ownerId: ctx.userId,
+      });
+    } else {
+      const ids = await getPropertyIdsForContext(ctx);
+      if (ids !== null) {
+        if (ids.length === 0) return ok([]);
+        qb = qb.innerJoin("Contract", "c", "c.id = cp.contract_id AND c.property_id IN (:...ids)", { ids });
+      } else {
+        qb = qb.innerJoin("Contract", "c", "c.id = cp.contract_id");
+      }
+    }
 
-    // Join through contracts to ensure ownership
-    let qb = ds
-      .getRepository("ContractPayment")
-      .createQueryBuilder("cp")
-      .innerJoin(
-        "Contract",
-        "c",
-        Array.isArray(propertyIds)
-          ? "c.id = cp.contract_id AND c.property_id IN (:...propertyIds)"
-          : "c.id = cp.contract_id AND c.owner_id = :ownerId",
-        Array.isArray(propertyIds) ? { propertyIds } : { ownerId: user.userId }
-      )
-      .orderBy("cp.due_date", "ASC");
-
-    if (contractId) qb = qb.andWhere("cp.contract_id = :contractId", { contractId });
+    qb = qb.orderBy("cp.due_date", "ASC");
     if (status === "paid") qb = qb.andWhere("cp.status = 'paid'");
     if (status === "pending") qb = qb.andWhere("cp.status != 'paid'");
     if (dateFrom) qb = qb.andWhere("cp.due_date >= :dateFrom", { dateFrom });
@@ -131,10 +205,10 @@ export async function GET(req: NextRequest) {
       receipt_url: receiptByPaymentId.get(String((payment as any).id)) ?? null,
     }));
 
-    if (ownerHidesTenantPii(user)) {
+    if (ownerHidesTenantPii({ userType: ctx.userType })) {
       if (!contractId) return ok({ summaries: [] });
       const contract = await ds.getRepository("Contract").findOne({ where: { id: contractId } as any });
-      if (!contract) return unauthorized();
+      if (!contract) throw new AuthError("غير موجود", 404);
       const summary = buildOwnerContractSummary({
         end_date: (contract as any).end_date,
         start_date: (contract as any).start_date,
@@ -144,83 +218,84 @@ export async function GET(req: NextRequest) {
     }
 
     return ok(paymentsWithReceipts);
-  } catch (err) {
-    console.error("[contract-payments GET] error:", err);
-    return serverError(err);
   }
-}
+);
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) return unauthorized();
-    if (ownerHidesTenantPii(user)) return unauthorized();
-
-    const raw = await req.json();
-    const parsed = CreatePaymentsSchema.safeParse(raw);
-    if (!parsed.success) return badRequest(badZod(parsed.error));
+export const POST = withAuth<UserContext>(
+  async () => {
+    const ctx = await resolveContext();
+    requireCapability(ctx, "payments_mutate");
+    // Legacy rule: owners/personal cannot create payment rows (payment
+    // collection is agency work). Kept to avoid loosening permissions.
+    if (ownerHidesTenantPii({ userType: ctx.userType })) {
+      throw new AuthError("ممنوع", 403);
+    }
+    return ctx;
+  },
+  async (ctx, req) => {
+    const raw = await req.json().catch(() => null);
+    if (!raw || typeof raw !== "object") throw badRequest("البيانات مطلوبة");
 
     const ds = await getDataSource();
 
-    // Support batch insert (array), { batch: [...] }, or single
-    const body = parsed.data as any;
-    const items = Array.isArray(body) ? body : Array.isArray(body?.batch) ? body.batch : [body];
-    if (items.length === 0) return badRequest("البيانات مطلوبة");
+    // New shape: { contract_id, payments: [...] } — auto-generate when empty
+    const newShape = NewPaymentBodySchema.safeParse(raw);
+    if (newShape.success) {
+      const { contract_id, payments } = newShape.data;
+      await assertContractAccess(ctx, String(contract_id));
 
-    const repo = ds.getRepository("ContractPayment");
-    const saved = [];
+      let items = payments.map((p) => ({
+        contract_id: String(contract_id),
+        amount_sar: Number(p.amount_sar ?? p.amount),
+        due_date: p.due_date ?? null,
+        paid_at: null,
+        status: "pending",
+        notes: null,
+        payment_method: p.payment_method ?? "cash",
+      }));
 
-    // Authorization: only allow adding payments to accessible contracts
-    const propertyIds = await getAccessiblePropertyIds(ds, user);
-    if (Array.isArray(propertyIds) && propertyIds.length === 0) return unauthorized();
-    const contractIds = Array.from(new Set(items.map((i: any) => String(i.contract_id)).filter(Boolean)));
-    if (contractIds.length === 0) return badRequest("معرف العقد مطلوب");
-
-    const allowedRows = await ds.query(
-      Array.isArray(propertyIds)
-        ? `SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND property_id = ANY($2::uuid[])`
-        : `SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND owner_id = $2`,
-      Array.isArray(propertyIds) ? [contractIds, propertyIds] : [contractIds, user.userId]
-    );
-    const allowed = new Set((allowedRows ?? []).map((r: any) => String(r.id)));
-
-    for (const item of items) {
-      const cid = String(item.contract_id);
-      if (!allowed.has(cid)) return unauthorized();
-      const payment = repo.create({
-        contract_id: cid,
-        amount_sar:
-          item.amount_sar != null && String(item.amount_sar).trim() !== "" ? Number(item.amount_sar) : 0,
-        due_date: item.due_date ?? null,
-        paid_at: item.paid_at ?? null,
-        status: item.status ?? "pending",
-        notes: item.notes ?? null,
-      } as any);
-      await repo.save(payment);
-      if (String((payment as any).status) === "paid") {
-        const contract = await ds
-          .getRepository("Contract")
-          .createQueryBuilder("c")
-          .leftJoinAndSelect("c.contact", "contact")
-          .leftJoinAndSelect("c.property", "property")
-          .leftJoinAndSelect("c.unit", "unit")
-          .where("c.id = :id", { id: cid })
-          .getOne();
-        if (contract) {
-          await ds.query("DELETE FROM documents WHERE category = $1 AND file_name LIKE $2", [
-            "payment_receipt",
-            `receipt_${(payment as any).id}_%`,
-          ]);
-          await createReceiptDocument(ds, contract, payment);
-          await syncRevenueForPayment(contract, payment, ds);
-        }
+      if (items.length === 0) {
+        // Auto-generate installments from the contract (same generator used at
+        // contract creation in /api/contracts).
+        const contract = await ds.getRepository("Contract").findOne({ where: { id: contract_id } as any });
+        if (!contract) throw new AuthError("غير موجود", 404);
+        const schedule = generatePaymentSchedule({
+          rent_total_sar: Number((contract as any).rent_total_sar) || 0,
+          start_date: String((contract as any).start_date ?? ""),
+          end_date: String((contract as any).end_date ?? ""),
+          payment_frequency: (contract as any).payment_frequency ?? null,
+          installments_count: (contract as any).installments_count ?? null,
+        });
+        items = schedule.map((s) => ({
+          contract_id: String(contract_id),
+          amount_sar: s.amount_sar,
+          due_date: s.due_date,
+          paid_at: null,
+          status: "pending",
+          notes: null,
+          payment_method: "cash",
+        }));
       }
-      saved.push(payment);
+
+      const saved = await insertPaymentItems(ds, items);
+      return created(saved.length === 1 ? saved[0] : saved);
     }
 
+    // Legacy shapes: single item, array, or { batch: [...] }
+    const parsed = CreatePaymentsSchema.safeParse(raw);
+    if (!parsed.success) throw badRequest(badZod(parsed.error));
+
+    const body = parsed.data as any;
+    const items = Array.isArray(body) ? body : Array.isArray(body?.batch) ? body.batch : [body];
+    if (items.length === 0) throw badRequest("البيانات مطلوبة");
+
+    const contractIds: string[] = Array.from(
+      new Set(items.map((i: any) => String(i.contract_id ?? "")).filter((s: string) => Boolean(s)))
+    );
+    if (contractIds.length === 0) throw badRequest("معرف العقد مطلوب");
+    for (const cid of contractIds) await assertContractAccess(ctx, cid);
+
+    const saved = await insertPaymentItems(ds, items);
     return created(saved.length === 1 ? saved[0] : saved);
-  } catch (err) {
-    console.error("[contract-payments POST] error:", err);
-    return serverError(err);
   }
-}
+);
