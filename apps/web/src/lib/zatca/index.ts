@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { getDataSource } from "@/lib/db/data-source";
 
 export interface ZATCAInvoiceData {
@@ -69,10 +69,21 @@ function escapeXml(value: string): string {
 }
 
 /**
- * Simplified UBL XML, unsigned.
+ * Simplified UBL 2.1 XML, unsigned.
  * UNSIGNED XML — Phase-2 signing requires ZATCA CSID credentials.
+ *
+ * UBL 2.1 audit (matches ZATCA's XSD expectations):
+ *  - root Invoice with Invoice-2 namespace
+ *  - cbc:ID, cbc:IssueDate/IssueTime, cbc:InvoiceTypeCode 388
+ *  - cbc:ProfileID (REPORT-01) + cbc:UUID — added during compliance review
+ *  - supplier/customer parties, TaxTotal, LegalMonetaryTotal
+ *  - InvoiceLine: optional (includeLines) — REQUIRED for standard (B2B)
+ *    invoices; omitted for simplified (B2C) per ZATCA's simplified XSD.
+ *    Verify the exact ProfileID/type-code combination against the current
+ *    ZATCA XSD when credentials arrive.
  */
-export function generateZATCAXML(data: ZATCAInvoiceData): string {
+export function generateZATCAXML(data: ZATCAInvoiceData, opts?: { includeLines?: boolean }): string {
+  const { includeLines = false } = opts ?? {};
   const seller = escapeXml(data.seller_name);
   const buyer = escapeXml(data.buyer_name);
   const sellerVat = escapeXml(data.seller_vat ?? "");
@@ -88,9 +99,11 @@ export function generateZATCAXML(data: ZATCAInvoiceData): string {
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
          xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
   <cbc:ID>${escapeXml(data.invoice_number)}</cbc:ID>
+  <cbc:UUID>${randomUUID()}</cbc:UUID>
   <cbc:IssueDate>${date}</cbc:IssueDate>
   <cbc:IssueTime>${time}</cbc:IssueTime>
   <cbc:InvoiceTypeCode>388</cbc:InvoiceTypeCode>
+  <cbc:ProfileID>REPORT-01</cbc:ProfileID>
   <cbc:DocumentCurrencyCode>SAR</cbc:DocumentCurrencyCode>
   <cac:AccountingSupplierParty>
     <cac:Party>
@@ -122,7 +135,30 @@ export function generateZATCAXML(data: ZATCAInvoiceData): string {
   <cac:LegalMonetaryTotal>
     <cbc:TaxInclusiveAmount currencyID="SAR">${data.total_amount.toFixed(2)}</cbc:TaxInclusiveAmount>
     <cbc:PayableAmount currencyID="SAR">${data.total_amount.toFixed(2)}</cbc:PayableAmount>
-  </cac:LegalMonetaryTotal>
+  </cac:LegalMonetaryTotal>${
+    includeLines
+      ? `
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="SAR">${taxable}</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>إيجار عقار — ${escapeXml(data.invoice_number)}</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>${(data.vat_rate * 100).toFixed(0)}</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="SAR">${taxable}</cbc:PriceAmount>
+    </cac:Price>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="SAR">${data.vat_amount.toFixed(2)}</cbc:TaxAmount>
+    </cac:TaxTotal>
+  </cac:InvoiceLine>`
+      : ""
+  }
 </Invoice>`;
 }
 
