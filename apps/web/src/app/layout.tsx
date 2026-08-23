@@ -4,16 +4,12 @@ import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { NavbarGate } from "@/components/landing/NavbarGate";
-import { startProcessingInterval } from "@/lib/notifications/processor";
 
-// Start the notification queue processor (5-minute interval).
-// This module only ever executes server-side inside this server component;
-// the browser bundle never imports or runs it.
-if (typeof window === "undefined") {
-  startProcessingInterval(5 * 60 * 1000);
-}
-// Alternative for VPS deployment (no app-level interval needed):
-// */5 * * * * curl -s http://localhost:3000/api/notifications/process
+// Queue processing lives in the standalone worker (scripts/queue-worker.ts),
+// not in the web process — process separation + atomic row claiming
+// (FOR UPDATE SKIP LOCKED) prevent races and duplicate delivery.
+// Manual drain fallback: POST /api/notifications/process (admin-only),
+// or cron: * * * * * curl -sf http://localhost:3000/api/notifications/process
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],

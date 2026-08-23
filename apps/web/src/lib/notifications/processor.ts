@@ -3,29 +3,40 @@ import { sendEmail } from "@/lib/email/service";
 import { log } from "@/lib/logger";
 
 /**
- * Drains notification_queue. Poll every 5 minutes (or invoke directly via
- * POST /api/notifications/process — admin only).
+ * Drains notification_queue. Invoke directly (admin endpoint, cron, worker
+ * script, or the in-process interval).
  *
- * - email rows: delivered with nodemailer via lib/email/service.ts
- * - sms rows:   logged as not-yet-implemented (provider stub)
+ * Concurrency: rows are claimed atomically (FOR UPDATE SKIP LOCKED → status
+ * 'processing'), so any number of worker instances can poll safely — a row is
+ * delivered exactly once. Rows stuck in 'processing' (crashed worker) older
+ * than 10 minutes are re-claimed.
  */
 export async function processPendingNotifications({
-  now = new Date(),
   limit = 100,
 }: {
-  now?: Date;
   limit?: number;
 } = {}): Promise<{ processed: number; sent: number; failed: number }> {
   const ds = await getDataSource();
-  const rows = await ds.query(
-    `SELECT id, notification_id, channel, payload
-       FROM notification_queue
-      WHERE status = 'pending'
-        AND (scheduled_for IS NULL OR scheduled_for <= $1)
-      ORDER BY created_at ASC
-      LIMIT $2`,
-    [now.toISOString(), limit]
+  const claimResult = await ds.query(
+    `WITH pending AS (
+       SELECT id
+         FROM notification_queue
+        WHERE (scheduled_for IS NULL OR scheduled_for <= NOW())
+          AND (status = 'pending'
+            OR (status = 'processing' AND created_at < NOW() - INTERVAL '10 minutes'))
+         ORDER BY created_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED
+     )
+     UPDATE notification_queue nq
+        SET status = 'processing'
+       FROM pending
+      WHERE nq.id = pending.id
+      RETURNING nq.id, nq.channel, nq.payload`,
+    [limit]
   );
+  // TypeORM ds.query() on UPDATE returns [rows, affectedCount] — unwrap rows.
+  const rows = Array.isArray(claimResult) ? (claimResult[0] ?? []) : claimResult;
 
   let sent = 0;
   let failed = 0;

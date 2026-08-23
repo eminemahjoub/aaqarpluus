@@ -207,6 +207,7 @@ export function PropertiesContent() {
         onTerminateContract={handleTerminateContract}
         onCancelContract={handleCancelContract}
         onRegisterPayment={handleRegisterPayment}
+        isOwner={userType === "owner" || userType === "personal"}
       />
 
       {selectedProperty && (

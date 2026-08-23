@@ -31,6 +31,8 @@ import {
   type Unit,
 } from "@/app/dashboard/properties/hooks/useProperties";
 import type { ContractEditData } from "@/components/properties/ContractFormModal";
+import MaskedTenantCard from "@/components/properties/MaskedTenantCard";
+import { DocumentList } from "@/components/documents/DocumentList";
 
 /**
  * Property detail drawer (Day 4 extraction).
@@ -91,6 +93,87 @@ function usePropertyImages(propertyId: string) {
     },
     enabled: Boolean(propertyId),
   });
+}
+
+function usePropertyPayments(propertyId: string) {
+  return useQuery<{ payments?: PaymentHistoryRow[] }>({
+    queryKey: ["property-payments", propertyId],
+    queryFn: async () => {
+      const res = await authFetch(
+        `/api/payments?property_id=${encodeURIComponent(propertyId)}`
+      );
+      if (!res.ok) return { payments: [] };
+      return res.json();
+    },
+    enabled: Boolean(propertyId),
+  });
+}
+
+const PAYMENT_METHOD_AR: Record<string, string> = {
+  cash: "نقدي",
+  bank_transfer: "تحويل بنكي",
+  check: "شيك",
+  card: "بطاقة",
+  other: "أخرى",
+};
+
+type PaymentHistoryRow = {
+  id: string;
+  amount_sar: number;
+  payment_method: string;
+  paid_at: string | null;
+  unit_label: string | null;
+  receipt_url: string | null;
+};
+
+function PaymentHistorySection({ propertyId }: { propertyId: string }) {
+  const { data, isLoading } = usePropertyPayments(propertyId);
+  const list = Array.isArray(data?.payments) ? data!.payments : [];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+          سجل الدفعات المسددة ({list.length})
+        </h3>
+      </div>
+      {isLoading && <Skeleton className="h-20" />}
+      {!isLoading && list.length === 0 && (
+        <p className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+          لا توجد دفعات مسددة لهذا العقار
+        </p>
+      )}
+      {list.map((p) => (
+        <div
+          key={p.id}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
+        >
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              {fmtMoney(p.amount_sar)}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {fmtDate(p.paid_at)}
+              {p.unit_label ? ` — ${p.unit_label}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              {PAYMENT_METHOD_AR[p.payment_method] ?? p.payment_method}
+            </span>
+            {p.receipt_url && (
+              <a href={`/api/receipts/${p.id}/pdf`} target="_blank" rel="noreferrer">
+                <Button type="button" variant="outline" size="sm">
+                  <FileDown className="h-4 w-4" />
+                  السند
+                </Button>
+              </a>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function LoadingDetail() {
@@ -206,6 +289,7 @@ export function PropertyDetailDrawer({
   onTerminateContract,
   onCancelContract,
   onRegisterPayment,
+  isOwner,
 }: {
   propertyId: string;
   open: boolean;
@@ -221,6 +305,8 @@ export function PropertyDetailDrawer({
   onTerminateContract?: (contract: ContractEditData) => void;
   onCancelContract?: (contract: ContractEditData) => void;
   onRegisterPayment?: (contract: ContractEditData, amount?: number, dueDate?: string) => void;
+  /** owner/personal — renders the owner-only PII unmask card */
+  isOwner?: boolean;
 }) {
   const { data: property, isLoading, isError } = useProperty(open ? propertyId : "");
   const { data: images } = usePropertyImages(open ? propertyId : "");
@@ -302,6 +388,14 @@ export function PropertyDetailDrawer({
                   <Receipt className="h-4 w-4" />
                   الإيرادات
                 </TabsTrigger>
+                <TabsTrigger value="payments">
+                  <Wallet className="h-4 w-4" />
+                  الدفعات
+                </TabsTrigger>
+                <TabsTrigger value="documents">
+                  <FileText className="h-4 w-4" />
+                  المستندات
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="units">
@@ -373,6 +467,19 @@ export function PropertyDetailDrawer({
 
                 {activeContract && (
                   <>
+                    {isOwner && (
+                      <div className="mb-3">
+                        <MaskedTenantCard
+                          propertyId={propertyId}
+                          maskedTenant={{
+                            name: String((activeContract as any).contact?.name ?? "المستأجر"),
+                            phone: null,
+                            email: null,
+                            id_number: null,
+                          }}
+                        />
+                      </div>
+                    )}
                     <Card>
                       <CardContent className="space-y-2 p-4">
                         <div className="flex items-center justify-between">
@@ -493,6 +600,14 @@ export function PropertyDetailDrawer({
                 />
               </TabsContent>
             </Tabs>
+
+            <TabsContent value="payments">
+                <PaymentHistorySection propertyId={propertyId} />
+              </TabsContent>
+
+              <TabsContent value="documents">
+                <DocumentList propertyId={propertyId} />
+              </TabsContent>
 
             {confirmAction && activeContract && (
               <ConfirmActionDialog
