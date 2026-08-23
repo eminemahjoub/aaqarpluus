@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   X,
@@ -10,6 +11,10 @@ import {
   Receipt,
   Plus,
   Pencil,
+  FileDown,
+  PencilLine,
+  Ban,
+  Trash2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,6 +30,7 @@ import {
   type PropertyImage,
   type Unit,
 } from "@/app/dashboard/properties/hooks/useProperties";
+import type { ContractEditData } from "@/components/properties/ContractFormModal";
 
 /**
  * Property detail drawer (Day 4 extraction).
@@ -156,7 +162,12 @@ function ImagesSection({
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">الصور ({list.length})</h3>
         {onUploadImages && (
-          <Button type="button" variant="outline" size="sm">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onUploadImages("")}
+          >
             <Plus className="h-4 w-4" />
             إضافة صور
           </Button>
@@ -187,6 +198,14 @@ export function PropertyDetailDrawer({
   onEdit,
   onAddUnit,
   onUploadImages,
+  onAddContract,
+  onAddPayment,
+  onAddExpense,
+  onAddRevenue,
+  onEditContract,
+  onTerminateContract,
+  onCancelContract,
+  onRegisterPayment,
 }: {
   propertyId: string;
   open: boolean;
@@ -194,9 +213,35 @@ export function PropertyDetailDrawer({
   onEdit?: (property: Property) => void;
   onAddUnit?: (propertyId: string) => void;
   onUploadImages?: (propertyId: string) => void;
+  onAddContract?: (propertyId: string) => void;
+  onAddPayment?: (propertyId: string) => void;
+  onAddExpense?: (propertyId: string) => void;
+  onAddRevenue?: (propertyId: string) => void;
+  onEditContract?: (contract: ContractEditData) => void;
+  onTerminateContract?: (contract: ContractEditData) => void;
+  onCancelContract?: (contract: ContractEditData) => void;
+  onRegisterPayment?: (contract: ContractEditData, amount?: number, dueDate?: string) => void;
 }) {
   const { data: property, isLoading, isError } = useProperty(open ? propertyId : "");
   const { data: images } = usePropertyImages(open ? propertyId : "");
+
+  const activeContract = (property?.contracts ?? []).find(
+    (c: any) => c.status === "active"
+  ) as ContractEditData | undefined;
+
+  const [confirmAction, setConfirmAction] = useState<"terminate" | "cancel" | null>(null);
+
+  const { data: payments } = useQuery<PaymentRow[]>({
+    queryKey: ["contract-payments", activeContract?.id],
+    queryFn: async () => {
+      const res = await authFetch(
+        `/api/contract-payments?contract_id=${encodeURIComponent(String(activeContract!.id))}`
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open && Boolean(activeContract),
+  });
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -260,18 +305,168 @@ export function PropertyDetailDrawer({
               </TabsList>
 
               <TabsContent value="units">
-                <UnitsSection units={Array.isArray(property.units) ? property.units : []} onAddUnit={onAddUnit} />
+                <UnitsSection
+                  units={Array.isArray(property.units) ? property.units : []}
+                  onAddUnit={onAddUnit ? () => onAddUnit(propertyId) : undefined}
+                />
               </TabsContent>
 
               <TabsContent value="images">
-                <ImagesSection images={images} onUploadImages={onUploadImages} />
+                <ImagesSection
+                  images={images}
+                  onUploadImages={onUploadImages ? () => onUploadImages(propertyId) : undefined}
+                />
               </TabsContent>
 
               <TabsContent value="contracts">
-                <ActiveContractSection contracts={Array.isArray(property.contracts) ? property.contracts : []} />
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">العقد النشط</h3>
+                  {activeContract && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onAddPayment && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => onAddPayment(propertyId)}>
+                          <Wallet className="h-4 w-4" />
+                          تسجيل دفعة
+                        </Button>
+                      )}
+                      {onEditContract && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => onEditContract(activeContract)}>
+                          <PencilLine className="h-4 w-4" />
+                          تحرير العقد
+                        </Button>
+                      )}
+                      {onTerminateContract && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => setConfirmAction("terminate")}>
+                          <Ban className="h-4 w-4" />
+                          إنهاء العقد
+                        </Button>
+                      )}
+                      {onCancelContract && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfirmAction("cancel")}
+                          className="text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          إلغاء العقد
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {!activeContract && onAddContract && (
+                    <Button type="button" variant="default" size="sm" onClick={() => onAddContract(propertyId)}>
+                      <Plus className="h-4 w-4" />
+                      إضافة عقد
+                    </Button>
+                  )}
+                </div>
+
+                {!activeContract && (
+                  <Card>
+                    <CardContent className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                      لا يوجد عقد نشط
+                    </CardContent>
+                  </Card>
+                )}
+
+                {activeContract && (
+                  <>
+                    <Card>
+                      <CardContent className="space-y-2 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">المستأجر</span>
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {(activeContract as any).contact?.name ?? "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">الفترة</span>
+                          <span className="text-sm text-gray-800 dark:text-gray-200">
+                            {fmtDate((activeContract as any).start_date)} ← {fmtDate((activeContract as any).end_date)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">الإيجار الإجمالي</span>
+                          <span className="font-semibold text-gray-900 dark:text-white">
+                            {fmtMoney((activeContract as any).rent_total_sar)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">التكرار</span>
+                          <span className="text-sm text-gray-800 dark:text-gray-200">
+                            {(activeContract as any).payment_frequency ?? "—"}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <div className="mt-4 space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        الدفعات ({Array.isArray(payments) ? payments.length : 0})
+                      </h4>
+                      {(!payments || payments.length === 0) && (
+                        <p className="py-3 text-center text-xs text-gray-400 dark:text-gray-500">
+                          لا توجد دفعات
+                        </p>
+                      )}
+                      {(payments ?? []).map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
+                        >
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              {fmtMoney(p.amount_sar)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              استحقاق: {fmtDate(p.due_date)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={p.status === "paid" ? "green" : "amber"}>
+                              {p.status === "paid" ? "مدفوع" : "مستحق"}
+                            </Badge>
+                            {p.status === "paid" ? (
+                              <a href={`/api/receipts/${p.id}/pdf`} target="_blank" rel="noreferrer">
+                                <Button type="button" variant="outline" size="sm">
+                                  <FileDown className="h-4 w-4" />
+                                  السند
+                                </Button>
+                              </a>
+                            ) : (
+                              onRegisterPayment && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    onRegisterPayment(activeContract, Number(p.amount_sar), p.due_date ?? undefined)
+                                  }
+                                >
+                                  تسجيل
+                                </Button>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </TabsContent>
 
               <TabsContent value="expenses">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">المصروفات</h3>
+                  {onAddExpense && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => onAddExpense(propertyId)}>
+                      <Plus className="h-4 w-4" />
+                      إضافة مصروف
+                    </Button>
+                  )}
+                </div>
                 <MoneyListSection
                   title="المصروفات"
                   empty="لا توجد مصروفات"
@@ -281,6 +476,15 @@ export function PropertyDetailDrawer({
               </TabsContent>
 
               <TabsContent value="revenues">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">الإيرادات</h3>
+                  {onAddRevenue && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => onAddRevenue(propertyId)}>
+                      <Plus className="h-4 w-4" />
+                      إضافة إيراد
+                    </Button>
+                  )}
+                </div>
                 <MoneyListSection
                   title="الإيرادات"
                   empty="لا توجد إيرادات"
@@ -289,6 +493,18 @@ export function PropertyDetailDrawer({
                 />
               </TabsContent>
             </Tabs>
+
+            {confirmAction && activeContract && (
+              <ConfirmActionDialog
+                action={confirmAction}
+                onConfirm={() => {
+                  if (confirmAction === "terminate") onTerminateContract?.(activeContract);
+                  else onCancelContract?.(activeContract);
+                  setConfirmAction(null);
+                }}
+                onClose={() => setConfirmAction(null)}
+              />
+            )}
           </>
         )}
       </DialogContent>
@@ -296,49 +512,50 @@ export function PropertyDetailDrawer({
   );
 }
 
-function ActiveContractSection({ contracts }: { contracts: any[] }) {
-  const active = contracts.find((c: any) => c.status === "active");
+type PaymentRow = {
+  id: string;
+  amount_sar: number;
+  due_date: string | null;
+  paid_at: string | null;
+  status: string;
+  receipt_url?: string | null;
+};
+
+function ConfirmActionDialog({
+  action,
+  onConfirm,
+  onClose,
+}: {
+  action: "terminate" | "cancel";
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const isCancel = action === "cancel";
   return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">العقد النشط</h3>
-      {!active && (
-        <Card>
-          <CardContent className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-            لا يوجد عقد نشط
-          </CardContent>
-        </Card>
-      )}
-      {active && (
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">المستأجر</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {active.contact?.name ?? "—"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">الفترة</span>
-              <span className="text-sm text-gray-800 dark:text-gray-200">
-                {fmtDate(active.start_date)} ← {fmtDate(active.end_date)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">الإيجار الإجمالي</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {fmtMoney(active.rent_total_sar)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">التكرار</span>
-              <span className="text-sm text-gray-800 dark:text-gray-200">
-                {active.payment_frequency ?? "—"}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-sm" dir="rtl">
+        <DialogHeader>
+          <DialogTitle>{isCancel ? "إلغاء العقد" : "إنهاء العقد"}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {isCancel
+            ? "سيتم حذف العقد وجميع دفعاته نهائياً، وإخلاء الوحدة. لا يمكن التراجع عن هذا الإجراء."
+            : "سيتم إنهاء العقد وإخلاء الوحدة."}
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            تراجع
+          </Button>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            className={cn(isCancel && "bg-red-600 hover:bg-red-700")}
+          >
+            {isCancel ? "نعم، إلغاء العقد" : "نعم، إنهاء العقد"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

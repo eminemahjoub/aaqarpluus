@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { authFetch } from "@/lib/auth-fetch";
 import { useCanMutate } from "@/hooks/useCanMutate";
 import { PropertyList } from "@/components/properties/PropertyList";
 import {
@@ -8,6 +10,14 @@ import {
   type PropertyFormData,
 } from "@/components/properties/PropertyForm";
 import { PropertyDetailDrawer } from "@/components/properties/PropertyDetailDrawer";
+import { UnitFormModal } from "@/components/properties/UnitFormModal";
+import {
+  ContractFormModal,
+  type ContractEditData,
+} from "@/components/properties/ContractFormModal";
+import { PaymentFormModal } from "@/components/properties/PaymentFormModal";
+import { FinanceFormModal } from "@/components/properties/FinanceFormModal";
+import { ImageUploadModal } from "@/components/properties/ImageUploadModal";
 import {
   usePropertyMutations,
   type Property,
@@ -49,13 +59,83 @@ function propertyToFormData(p: Property): Partial<PropertyFormData> {
 
 export function PropertiesContent() {
   const { userType, canMutateProperties } = useCanMutate();
+  const queryClient = useQueryClient();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
 
+  const [showUnitModal, setShowUnitModal] = useState(false);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [editingContract, setEditingContract] = useState<ContractEditData | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<{
+    contract_id?: string;
+    amount_sar?: number;
+    due_date?: string;
+  } | null>(null);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showRevenueModal, setShowRevenueModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+
   const { create, update } = usePropertyMutations(String(userType || "session"));
 
   const canAdd = canMutateProperties;
+
+  const refreshTop = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["property", selectedProperty?.id] });
+    await queryClient.invalidateQueries({ queryKey: ["property-images", selectedProperty?.id] });
+    await queryClient.invalidateQueries({ queryKey: ["contract-payments"] });
+    await queryClient.invalidateQueries({ queryKey: ["properties", String(userType || "session")] });
+  };
+
+  const refreshDrawer = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["property", selectedProperty?.id] });
+    await queryClient.invalidateQueries({ queryKey: ["contract-payments"] });
+  };
+
+  const handleEditContract = (contract: ContractEditData) => {
+    setEditingContract(contract);
+    setShowContractModal(true);
+  };
+
+  const handleTerminateContract = async (contract: ContractEditData) => {
+    try {
+      const res = await authFetch(`/api/contracts/${encodeURIComponent(contract.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ended" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Free the unit (the PUT sync only marks the property vacant)
+      if (contract.unit_id) {
+        await authFetch(`/api/units/${encodeURIComponent(contract.unit_id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "vacant" }),
+        });
+      }
+      await refreshDrawer();
+    } catch {
+      window.alert("تعذر إنهاء العقد");
+    }
+  };
+
+  const handleCancelContract = async (contract: ContractEditData) => {
+    try {
+      const res = await authFetch(`/api/contracts/${encodeURIComponent(contract.id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refreshDrawer();
+    } catch {
+      window.alert("تعذر إلغاء العقد");
+    }
+  };
+
+  const handleRegisterPayment = (contract: ContractEditData, amount?: number, dueDate?: string) => {
+    setPendingPayment({ contract_id: contract.id, amount_sar: amount, due_date: dueDate });
+    setShowPaymentModal(true);
+  };
 
   const handleSubmit = async (data: PropertyFormData) => {
     const body: Record<string, unknown> = {
@@ -117,7 +197,65 @@ export function PropertiesContent() {
           setEditingProperty(p);
           setShowForm(true);
         }}
+        onAddUnit={() => setShowUnitModal(true)}
+        onUploadImages={() => setShowImageModal(true)}
+        onAddContract={() => setShowContractModal(true)}
+        onAddPayment={() => setShowPaymentModal(true)}
+        onAddExpense={() => setShowExpenseModal(true)}
+        onAddRevenue={() => setShowRevenueModal(true)}
+        onEditContract={handleEditContract}
+        onTerminateContract={handleTerminateContract}
+        onCancelContract={handleCancelContract}
+        onRegisterPayment={handleRegisterPayment}
       />
+
+      {selectedProperty && (
+        <>
+          <UnitFormModal
+            open={showUnitModal}
+            onClose={() => setShowUnitModal(false)}
+            propertyId={selectedProperty.id}
+            onSaved={refreshTop}
+          />
+          <ContractFormModal
+            open={showContractModal}
+            onClose={() => {
+              setShowContractModal(false);
+              setEditingContract(null);
+            }}
+            propertyId={selectedProperty.id}
+            onSaved={refreshDrawer}
+            initialContract={editingContract ?? undefined}
+          />
+          <PaymentFormModal
+            open={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            propertyId={selectedProperty.id}
+            onSaved={refreshTop}
+            initialPayment={pendingPayment}
+          />
+          <FinanceFormModal
+            open={showExpenseModal}
+            onClose={() => setShowExpenseModal(false)}
+            propertyId={selectedProperty.id}
+            mode="expense"
+            onSaved={refreshTop}
+          />
+          <FinanceFormModal
+            open={showRevenueModal}
+            onClose={() => setShowRevenueModal(false)}
+            propertyId={selectedProperty.id}
+            mode="revenue"
+            onSaved={refreshTop}
+          />
+          <ImageUploadModal
+            open={showImageModal}
+            onClose={() => setShowImageModal(false)}
+            propertyId={selectedProperty.id}
+            onSaved={refreshTop}
+          />
+        </>
+      )}
     </div>
   );
 }
