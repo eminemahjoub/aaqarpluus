@@ -11,7 +11,6 @@ import nextConfig from "eslint-config-next";
  * cleared during the monolith extraction work), not applied globally.
  */
 const LEGACY_DASHBOARD_MONOLITHS = [
-  "src/app/dashboard/properties/page.tsx",
   "src/app/dashboard/properties/units/page.tsx",
   "src/app/dashboard/reports/page.tsx",
   "src/app/dashboard/tasks/page.tsx",
