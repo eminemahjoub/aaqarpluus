@@ -3,6 +3,7 @@
 import * as React from "react";
 import { User, Phone, Mail, Building2, Edit2, Check, X, FileText, Hash, Image as ImageIcon, Upload } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
+import { LoginHistory } from "@/components/auth/LoginHistory";
 
 type OfficeSettings = {
   name: string;
@@ -408,6 +409,8 @@ export function ProfileContent() {
           </div>
         </div>
       )}
+
+      <LoginHistory />
     </div>
   );
 }

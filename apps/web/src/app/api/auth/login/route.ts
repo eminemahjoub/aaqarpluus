@@ -8,6 +8,7 @@ import { ok, badRequest, serverError } from "@/lib/api-helpers";
 import { z } from "zod";
 import { badZod } from "@/lib/validation";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { recordLoginAttempt, clientIp, clientUserAgent } from "@/lib/login-audit";
 
 const LoginSchema = z.object({
   identifier: z.string().trim().min(1, "البريد الإلكتروني/رقم الجوال مطلوب"),
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
     if (!(await checkRateLimit(`login:${ip}`, 10, 300))) return badRequest("محاولات كثيرة، حاول لاحقاً");
+    const auditIp = clientIp(req);
+    const auditUa = clientUserAgent(req);
 
     const body = await req.json();
     const parsed = LoginSchema.safeParse({
@@ -72,10 +75,12 @@ export async function POST(req: NextRequest) {
         if (contact) {
           const c = contact as { pin_hash?: string; id?: string; name?: string; phone?: string };
           if (!c.pin_hash) {
+            await recordLoginAttempt({ userId: null, email: String(c.phone), ip: auditIp, userAgent: auditUa, success: false, failureReason: "pin_not_set" });
             return badRequest("لم يتم تفعيل الدخول لهذا المستأجر بعد. أنشئ رمز دخول من صفحة المستأجرين.");
           }
           const pinValid = await bcrypt.compare(password, String(c.pin_hash));
           if (!pinValid) {
+            await recordLoginAttempt({ userId: null, email: String(c.phone), ip: auditIp, userAgent: auditUa, success: false, failureReason: "invalid_pin" });
             return badRequest("رمز الدخول غير صحيح.");
           }
           const contract = await ds
@@ -87,8 +92,10 @@ export async function POST(req: NextRequest) {
             .orderBy("ct.created_at", "DESC")
             .getOne();
           if (!contract) {
+            await recordLoginAttempt({ userId: null, email: String(c.phone), ip: auditIp, userAgent: auditUa, success: false, failureReason: "no_active_contract" });
             return badRequest("لا يوجد عقد ساري مرتبط بهذا الرقم.");
           }
+          await recordLoginAttempt({ userId: null, email: String(c.phone), ip: auditIp, userAgent: auditUa, success: true });
           const token = await signTenantToken({
             tenantId: String(c.id),
             email: String(c.phone),
@@ -107,6 +114,7 @@ export async function POST(req: NextRequest) {
           return tenantResponse;
         }
       }
+await recordLoginAttempt({ userId: null, email: identifier, ip: auditIp, userAgent: auditUa, success: false, failureReason: "account_not_found" });
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة.");
     }
     const u = user as {
@@ -121,17 +129,21 @@ export async function POST(req: NextRequest) {
       full_name?: string;
     };
     if (u.deleted_at) {
+      await recordLoginAttempt({ userId: u.id, email: u.email, ip: auditIp, userAgent: auditUa, success: false, failureReason: "account_inactive" });
       return badRequest("هذا الحساب غير متاح");
     }
     if (u.is_active === false) {
+      await recordLoginAttempt({ userId: u.id, email: u.email, ip: auditIp, userAgent: auditUa, success: false, failureReason: "account_inactive" });
       return badRequest("تم تعطيل هذا الحساب");
     }
 
     const valid = await bcrypt.compare(password, u.password_hash);
     if (!valid) {
+      await recordLoginAttempt({ userId: u.id, email: u.email, ip: auditIp, userAgent: auditUa, success: false, failureReason: "invalid_password" });
       return badRequest("البريد الإلكتروني/رقم الجوال أو كلمة المرور غير صحيحة");
     }
 
+    await recordLoginAttempt({ userId: u.id, email: u.email, ip: auditIp, userAgent: auditUa, success: true });
     const accessToken = await signAccessToken({
       userId: u.id,
       email: u.email,
