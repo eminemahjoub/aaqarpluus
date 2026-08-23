@@ -60,9 +60,52 @@ export async function processPendingNotifications({
         });
         sent++;
       } else if (channel === "sms") {
-        // TODO: integrate SMS provider (Twilio/UNIFONIC/SMSA)
-        log.info("[notifications] SMS delivery not yet implemented:", String(payload.to));
-        sent++;
+        const providerName = process.env.SMS_PROVIDER;
+        if (!providerName) {
+          // Stub fallback until credentials exist — logs and drains the row
+          // so the queue never stalls on unconfigured SMS.
+          log.info("[notifications] SMS not configured — skipping delivery to:", String(payload.to));
+          sent++;
+        } else {
+          const { getSMSProvider, isSMSRetryable } = await import("@/lib/sms");
+          try {
+            const result = await getSMSProvider().send({
+              to: String(payload.to ?? ""),
+              body: String(payload.text ?? ""),
+            });
+            await ds.query(
+              `UPDATE notification_queue SET status = 'sent', provider_message_id = $2, sent_at = NOW() WHERE id = $1`,
+              [id, result.messageId]
+            );
+            sent++;
+          } catch (err) {
+            const msg = String(err instanceof Error ? err.message : err);
+            const retryable = isSMSRetryable(err);
+            const rc = await ds.query(`SELECT retry_count FROM notification_queue WHERE id = $1`, [id]);
+            const retryCount = Number(rc?.[0]?.retry_count) || 0;
+
+            if (retryable && retryCount < 3) {
+              // Re-queue for the next claim cycle (status back to pending).
+              await ds.query(
+                `UPDATE notification_queue SET status = 'pending', retry_count = retry_count + 1, failure_reason = $2, sent_at = NULL WHERE id = $1`,
+                [id, msg]
+              );
+            } else {
+              await ds.query(
+                `UPDATE notification_queue SET status = 'failed', failure_reason = $2, sent_at = NOW() WHERE id = $1`,
+                [id, msg]
+              );
+              await ds.query(
+                `INSERT INTO failed_sms (queue_id, recipient, body, error) VALUES ($1, $2, $3, $4)`,
+                [id, String(payload.to ?? ""), String(payload.text ?? ""), msg]
+              );
+              failed++;
+            }
+          }
+        }
+        // SMS rows manage their own terminal status (sent/retry/failed) — skip
+        // the generic sent-update below.
+        continue;
       } else {
         await ds.query(`UPDATE notification_queue SET status = 'failed', error = $2, sent_at = NOW() WHERE id = $1`, [
           id,
