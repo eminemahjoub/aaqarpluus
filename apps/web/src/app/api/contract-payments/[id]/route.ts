@@ -22,6 +22,7 @@ import {
   hashInvoice,
   type ZATCAInvoiceData,
 } from "@/lib/zatca";
+import { hasPlanFeature } from "@/lib/billing/plans";
 
 /**
  * Contract payments routes — scoped via @/lib/auth/scope.
@@ -140,7 +141,10 @@ export const PUT = withAuth<ContractContext, { id: string }>(paymentResolver, as
         // later once ZATCA CSID credentials are available). Never blocks the
         // payment update — failures are logged and skipped.
         let zatcaQR: string | undefined;
-        if (ctx.officeId) {
+        // ZATCA invoices are a Starter+ feature — soft gate: free plans get
+        // their receipt WITHOUT the invoice/QR (payment itself never blocks).
+        const zatcaAllowed = await hasPlanFeature(ctx.officeId, "zatca");
+        if (ctx.officeId && zatcaAllowed) {
           try {
             const [office] = await ds.query(
             `SELECT name, description_ar, vat_number FROM offices WHERE id = $1 LIMIT 1`,

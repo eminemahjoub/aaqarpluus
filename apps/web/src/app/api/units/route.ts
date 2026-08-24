@@ -113,6 +113,13 @@ export async function POST(req: NextRequest) {
     const can = await assertCanAccessProperty(ds, user, propertyId);
     if (!can) return unauthorized();
 
+    // Plan unit-limit gate (agencies)
+    const { countOfficeUnits, assertUnitLimit } = await import("@/lib/billing/enforce");
+    if (user.officeId) {
+      const current = await countOfficeUnits(String(user.officeId));
+      await assertUnitLimit(String(user.officeId), current + 1);
+    }
+
     const prop = await ds.getRepository("Property").findOne({ where: { id: propertyId } as any });
     if (!prop) return badRequest("العقار غير موجود");
     const ownerId = String((prop as any).owner_id);

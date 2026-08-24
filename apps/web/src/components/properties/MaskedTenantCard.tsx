@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { PlanGate } from "@/components/billing/PlanGate";
 
 interface TenantPII {
   id?: string;
@@ -29,6 +30,7 @@ export default function MaskedTenantCard({
   const [fullData, setFullData] = useState<TenantPII | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gateFeature, setGateFeature] = useState<string | null>(null);
 
   const toggle = async () => {
     if (unmasked) {
@@ -48,6 +50,11 @@ export default function MaskedTenantCard({
       );
       const body = await res.json().catch(() => null);
       if (!res.ok) {
+        const details = body?.details;
+        if (res.status === 403 && details?.code === "upgrade_required") {
+          setGateFeature(String(details.feature ?? "owner_portal"));
+          return;
+        }
         if (res.status === 403) setError("غير مصرح لك بعرض بيانات المستأجر");
         else setError(String(body?.error ?? "تعذر تحميل البيانات"));
         return;
@@ -112,6 +119,8 @@ export default function MaskedTenantCard({
             مرئي لأنك مالك هذا العقار
           </p>
         )}
+
+        <PlanGate open={gateFeature !== null} onClose={() => setGateFeature(null)} feature={gateFeature ?? undefined} />
       </CardContent>
     </Card>
   );

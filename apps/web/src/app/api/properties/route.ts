@@ -354,6 +354,15 @@ export async function POST(req: NextRequest) {
         return badRequest("نسبة العمولة مطلوبة");
       }
 
+const requestedUnits =
+        Number(body.apartments_count ?? 0) + Number(body.shops_count ?? 0) + Number(body.other_units_count ?? 0);
+      // Plan unit-limit gate (auto-generated units included)
+      const { countOfficeUnits, assertUnitLimit } = await import("@/lib/billing/enforce");
+      if (officeId) {
+        const current = await countOfficeUnits(officeId);
+        await assertUnitLimit(officeId, current + requestedUnits);
+      }
+
       const property = repo.create({
         owner_id: ownerId ?? agencyId,
         managing_office_id: officeId,
