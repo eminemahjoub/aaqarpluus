@@ -129,7 +129,15 @@ export const POST = withAuth<UserContext>(
     return ctx;
   },
   async (ctx, req) => {
-    const formData = await req.formData();
+    // Next truncates request bodies beyond 10MB before the handler runs —
+    // a failed FormData parse here means the upload exceeded the cap, so
+    // surface it as a friendly 400 instead of a 500.
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch {
+      throw badRequest("حجم الملف كبير جداً. الحد الأقصى 10 ميجابايت");
+    }
     const file = formData.get("file") as File | null;
     const propertyId = formData.get("property_id") as string | null;
     const contractId = formData.get("contract_id") as string | null;

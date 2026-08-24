@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import QRCode from "qrcode";
 
 type ReceiptPdfInput = {
   contract: any;
@@ -26,11 +27,11 @@ function loadFont(doc: PDFDocument): Promise<PDFFont> {
   return doc.embedFont(StandardFonts.Helvetica);
 }
 
-function formatDate(value: string | null | undefined) {
+function formatDate(value: string | Date | null | undefined) {
   if (!value) return "—";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("ar-SA");
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("ar-SA");
 }
 
 function formatCurrency(value: number | string | null | undefined) {
@@ -127,7 +128,6 @@ export async function createPaymentReceiptPdfBytes(input: ReceiptPdfInput) {
   // visual spec, when the receipt was generated with an invoice.
   if (zatcaQR) {
     try {
-      const { default: QRCode } = await import("qrcode");
       const dataUrl = await QRCode.toDataURL(zatcaQR, {
         errorCorrectionLevel: "M",
         margin: 1,

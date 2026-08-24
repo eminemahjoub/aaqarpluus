@@ -5,7 +5,18 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
   // --- API route protection ---
-  if (path.startsWith("/api/") && !path.startsWith("/api/auth/") && !path.startsWith("/api/health")) {
+  // /api/auth/* handles its own auth (incl. tenant PIN login) and
+  // /api/tenant/* authenticates via the dedicated tenant JWT — neither
+  // should be gated by the staff token here. /api/receipts/* is dual-auth
+  // (staff OR tenant) and enforces its own gates.
+  const isTenantApi =
+    path.startsWith("/api/tenant/") || path.startsWith("/api/receipts/");
+  if (
+    path.startsWith("/api/") &&
+    !path.startsWith("/api/auth/") &&
+    !path.startsWith("/api/health") &&
+    !isTenantApi
+  ) {
     const token = request.cookies.get(TOKEN_COOKIE)?.value;
     if (!token) {
       return new NextResponse(JSON.stringify({ error: "غير مصرح", code: "UNAUTHORIZED" }), {

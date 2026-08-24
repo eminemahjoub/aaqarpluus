@@ -7,6 +7,7 @@ require("./config/env.js");
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["qrcode"],
   turbopack: {
     root: __dirname,
   },
