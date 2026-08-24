@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { authFetch } from "@/lib/auth-fetch";
 import { useCanMutate } from "@/hooks/useCanMutate";
 import { PropertyList } from "@/components/properties/PropertyList";
 import {
@@ -47,7 +45,6 @@ function propertyToFormData(p: Property): Partial<PropertyFormData> {
 
 export default function AgencyPropertiesPage() {
   const { userType, canMutateProperties } = useCanMutate();
-  const queryClient = useQueryClient();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
