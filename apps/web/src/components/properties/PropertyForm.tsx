@@ -35,6 +35,7 @@ const propertySchema = z.object({
   water_account: z.string().optional(),
   electricity_account: z.string().optional(),
   title_deed_number: z.string().optional(),
+  description: z.string().optional(),
 });
 
 export type PropertyFormData = z.infer<typeof propertySchema>;
@@ -267,6 +268,16 @@ export function PropertyForm({
           <div>
             <Label>رقم الصك</Label>
             <Input {...register("title_deed_number")} placeholder="1012345678" />
+          </div>
+
+          <div>
+            <Label>الوصف</Label>
+            <textarea
+              {...register("description")}
+              rows={3}
+              placeholder="وصف العقار..."
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition placeholder:text-gray-500 focus-visible:border-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

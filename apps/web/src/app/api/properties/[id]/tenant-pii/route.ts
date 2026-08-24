@@ -7,6 +7,7 @@ import {
   assertPropertyAccess,
   type UserContext,
 } from "@/lib/auth/scope";
+import { logAudit } from "@/lib/audit";
 
 /**
  * GET /api/properties/[id]/tenant-pii — unmasked tenant PII for the
@@ -58,6 +59,16 @@ export const GET = withAuth<UserContext, { id: string }>(
     if (!contact) {
       return jsonResponse({ error: "لا يوجد مستأجر نشط", code: "NOT_FOUND" }, 404);
     }
+
+    // Compliance: every unmask is audited (who, which property, when).
+    void logAudit({
+      userId: ctx.userId,
+      action: "tenant-pii.unmask",
+      entityType: "property",
+      entityId: id,
+      metadata: { contactId: String(contact.id) },
+      req: _req,
+    });
 
     return new Response(
       JSON.stringify({

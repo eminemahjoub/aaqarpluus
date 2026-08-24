@@ -137,6 +137,14 @@ export const POST = withAuth<UserContext>(
 
     if (!file) throw badRequest("الملف مطلوب");
 
+    // Server-side envelope cap — the disk-filler guard (the API stays
+    // type-permissive on purpose: legacy documents page uploads Excel/images,
+    // tasks page attaches arbitrary files).
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw badRequest("حجم الملف كبير جداً. الحد الأقصى 10 ميجابايت");
+    }
+
     const ds = await getDataSource();
     const metaParsed = UploadMetaSchema.safeParse({
       property_id: propertyId,

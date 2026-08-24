@@ -54,6 +54,7 @@ function propertyToFormData(p: Property): Partial<PropertyFormData> {
     water_account: p.water_account ?? "",
     electricity_account: p.electricity_account ?? "",
     title_deed_number: p.title_deed_number ?? "",
+    description: (p as any).description ?? "",
   };
 }
 
@@ -159,6 +160,7 @@ export function PropertiesContent() {
       water_account: data.water_account ?? null,
       electricity_account: data.electricity_account ?? null,
       title_deed_number: data.title_deed_number ?? null,
+      description: data.description ?? null,
     };
 
     if (editingProperty) {

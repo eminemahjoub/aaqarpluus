@@ -23,13 +23,13 @@ export async function processPendingNotifications({
          FROM notification_queue
         WHERE (scheduled_for IS NULL OR scheduled_for <= NOW())
           AND (status = 'pending'
-            OR (status = 'processing' AND created_at < NOW() - INTERVAL '10 minutes'))
+            OR (status = 'processing' AND COALESCE(updated_at, created_at) < NOW() - INTERVAL '10 minutes'))
          ORDER BY created_at ASC
          LIMIT $1
          FOR UPDATE SKIP LOCKED
      )
      UPDATE notification_queue nq
-        SET status = 'processing'
+        SET status = 'processing', updated_at = NOW()
        FROM pending
       WHERE nq.id = pending.id
       RETURNING nq.id, nq.channel, nq.payload`,
@@ -74,7 +74,7 @@ export async function processPendingNotifications({
               body: String(payload.text ?? ""),
             });
             await ds.query(
-              `UPDATE notification_queue SET status = 'sent', provider_message_id = $2, sent_at = NOW() WHERE id = $1`,
+              `UPDATE notification_queue SET status = 'sent', provider_message_id = $2, sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
               [id, result.messageId]
             );
             sent++;
@@ -87,12 +87,12 @@ export async function processPendingNotifications({
             if (retryable && retryCount < 3) {
               // Re-queue for the next claim cycle (status back to pending).
               await ds.query(
-                `UPDATE notification_queue SET status = 'pending', retry_count = retry_count + 1, failure_reason = $2, sent_at = NULL WHERE id = $1`,
+                `UPDATE notification_queue SET status = 'pending', retry_count = retry_count + 1, failure_reason = $2, sent_at = NULL, updated_at = NOW() WHERE id = $1`,
                 [id, msg]
               );
             } else {
               await ds.query(
-                `UPDATE notification_queue SET status = 'failed', failure_reason = $2, sent_at = NOW() WHERE id = $1`,
+                `UPDATE notification_queue SET status = 'failed', failure_reason = $2, sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
                 [id, msg]
               );
               await ds.query(
@@ -107,17 +107,17 @@ export async function processPendingNotifications({
         // the generic sent-update below.
         continue;
       } else {
-        await ds.query(`UPDATE notification_queue SET status = 'failed', error = $2, sent_at = NOW() WHERE id = $1`, [
+        await ds.query(`UPDATE notification_queue SET status = 'failed', error = $2, sent_at = NOW(), updated_at = NOW() WHERE id = $1`, [
           id,
           `unsupported channel: ${channel}`,
         ]);
         failed++;
         continue;
       }
-      await ds.query(`UPDATE notification_queue SET status = 'sent', sent_at = NOW() WHERE id = $1`, [id]);
+      await ds.query(`UPDATE notification_queue SET status = 'sent', sent_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
     } catch (err) {
       failed++;
-      await ds.query(`UPDATE notification_queue SET status = 'failed', error = $2, sent_at = NOW() WHERE id = $1`, [
+      await ds.query(`UPDATE notification_queue SET status = 'failed', error = $2, sent_at = NOW(), updated_at = NOW() WHERE id = $1`, [
         id,
         String(err),
       ]);
