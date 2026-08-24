@@ -51,8 +51,8 @@ export const POST = withAuth<UserContext>(
     );
     const sub = await ds.query(
       `INSERT INTO subscriptions
-         (office_id, user_id, plan, status, trial_ends_at, current_period_starts_at, current_period_ends_at, payment_method, created_at, updated_at)
-       VALUES ($1, $2, $3, 'trialing', $4, NOW(), $5, $6, NOW(), NOW())
+         (office_id, user_id, plan, status, start_date, trial_ends_at, current_period_starts_at, current_period_ends_at, payment_method, created_at, updated_at)
+       VALUES ($1, $2, $3, 'trialing', CURRENT_DATE, $4, NOW(), $5, $6, NOW(), NOW())
        RETURNING id`,
       [ctx.officeId, ctx.userId, plan_id, trialEndsAt.toISOString(), periodEndsAt.toISOString(), "tap"]
     );

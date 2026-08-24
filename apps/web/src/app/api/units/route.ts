@@ -5,6 +5,7 @@ import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest 
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { z } from "zod";
 import { UuidSchema, badZod } from "@/lib/validation";
+import { jsonResponse, AppError } from "@/lib/errors";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
   const userType = String(user.userType ?? "");
@@ -91,6 +92,9 @@ export async function GET(req: NextRequest) {
     const units = await qb.getMany();
     return ok(units);
   } catch (err) {
+    if (err instanceof AppError) {
+      return jsonResponse({ error: err.message, code: err.code, ...(('details' in err && (err as any).details ? { details: (err as any).details } : {})) }, err.status);
+    }
     return serverError(err);
   }
 }
@@ -144,6 +148,9 @@ export async function POST(req: NextRequest) {
     await repo.save(unit);
     return created(unit);
   } catch (err) {
+    if (err instanceof AppError) {
+      return jsonResponse({ error: err.message, code: err.code, ...(('details' in err && (err as any).details ? { details: (err as any).details } : {})) }, err.status);
+    }
     return serverError(err);
   }
 }

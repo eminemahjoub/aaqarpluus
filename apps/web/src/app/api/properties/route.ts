@@ -5,6 +5,7 @@ import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest 
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
 import { z } from "zod";
 import { CommissionPercentSchema, badZod } from "@/lib/validation";
+import { jsonResponse, AppError } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
 import {
   buildOwnerContractSummary,
@@ -246,6 +247,9 @@ export async function GET(req: NextRequest) {
     }
     return ok(result);
   } catch (err) {
+    if (err instanceof AppError) {
+      return jsonResponse({ error: err.message, code: err.code, ...(('details' in err && (err as any).details ? { details: (err as any).details } : {})) }, err.status);
+    }
     return serverError(err);
   }
 }
@@ -473,6 +477,9 @@ const requestedUnits =
 
     return created(property);
   } catch (err) {
+    if (err instanceof AppError) {
+      return jsonResponse({ error: err.message, code: err.code, ...(('details' in err && (err as any).details ? { details: (err as any).details } : {})) }, err.status);
+    }
     return serverError(err);
   }
 }
