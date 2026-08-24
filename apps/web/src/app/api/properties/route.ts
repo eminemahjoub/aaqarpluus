@@ -279,6 +279,13 @@ const CreatePropertySchema = z.object({
   lessor_contact_id: z.string().nullable().optional(),
   managing_office_id: z.string().nullable().optional(),
   commission_percent: z.any().nullable().optional(),
+  property_type: z.enum(["residential", "commercial", "mixed"]).nullable().optional(),
+  ejar_registered: z.boolean().nullable().optional(),
+  ejar_number: z.string().nullable().optional(),
+  zatca_tax_category: z.string().nullable().optional(),
+  construction_year: z.number().int().min(1900).max(2100).nullable().optional(),
+  property_condition: z.enum(["new", "good", "fair", "needs_work"]).nullable().optional(),
+  extra: z.unknown().nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -304,6 +311,19 @@ export async function POST(req: NextRequest) {
     const isUuid = (v: string) =>
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 
+    // Data integrity: duplicate deed numbers are rejected (partial unique
+    // index exists too — this gives a friendly 400 instead of a 500).
+    if (typeof body.title_deed_number === "string" && body.title_deed_number.trim() !== "") {
+      const ds0 = await getDataSource();
+      const dup = await ds0.query(
+        `SELECT 1 AS ok FROM properties WHERE title_deed_number = $1 AND deleted_at IS NULL LIMIT 1`,
+        [body.title_deed_number.trim()]
+      );
+      if (Array.isArray(dup) && dup.length > 0) {
+        return badRequest("رقم الصك مستخدم مسبقاً");
+      }
+    }
+
     const lessorType = body.lessor_type === "office" || body.lessor_type === "owner" ? body.lessor_type : null;
     const lessorContactIdRaw = typeof body.lessor_contact_id === "string" ? body.lessor_contact_id.trim() : "";
     const lessorContactId = lessorType === "office" && lessorContactIdRaw ? lessorContactIdRaw : null;
@@ -322,6 +342,16 @@ export async function POST(req: NextRequest) {
     const ds = await getDataSource();
     const repo = ds.getRepository("Property");
     const userType = String(user.userType ?? "");
+
+    const complianceExtra = {
+      ...(body.extra && typeof body.extra === "object" ? body.extra : {}),
+      ...(body.property_type ? { property_type: body.property_type } : {}),
+      ...(body.ejar_registered !== undefined && body.ejar_registered !== null ? { ejar_registered: body.ejar_registered } : {}),
+      ...(body.ejar_number ? { ejar_number: body.ejar_number } : {}),
+      ...(body.zatca_tax_category ? { zatca_tax_category: body.zatca_tax_category } : {}),
+      ...(body.construction_year ? { construction_year: body.construction_year } : {}),
+      ...(body.property_condition ? { property_condition: body.property_condition } : {}),
+    };
 
     // Agency can create a property for a linked owner, and auto-assign itself to manage it.
     if (userType === "agency") {
@@ -367,7 +397,8 @@ const requestedUnits =
         await assertUnitLimit(officeId, current + requestedUnits);
       }
 
-      const property = repo.create({
+  
+    const property = repo.create({
         owner_id: ownerId ?? agencyId,
         managing_office_id: officeId,
         created_by_agency_id: agencyId,
@@ -396,6 +427,7 @@ const requestedUnits =
         lessor_type: lessorType,
         lessor_contact_id: lessorContactId,
         commission_percent: commissionPercentRaw,
+        extra: complianceExtra,
       });
 
       await repo.save(property);
@@ -451,6 +483,7 @@ const requestedUnits =
       lessor_type: lessorType,
       lessor_contact_id: lessorContactId,
       commission_percent: commissionPercentRaw,
+      extra: complianceExtra,
     });
 
     await repo.save(property);

@@ -31,6 +31,7 @@ export const PropertySchema = schema({
     other_units_count: { type: "int", default: 0 },
     unit_identifiers: { type: "varchar", length: 255, nullable: true },
     title_deed_number: { type: "varchar", length: 100, nullable: true },
+    extra: { type: "jsonb", nullable: true },
     water_account: { type: "varchar", length: 100, nullable: true },
     electricity_account: { type: "varchar", length: 100, nullable: true },
     description: { type: "text", nullable: true },

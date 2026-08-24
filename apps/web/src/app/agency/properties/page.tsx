@@ -72,6 +72,12 @@ export default function AgencyPropertiesPage() {
       electricity_account: data.electricity_account ?? null,
       title_deed_number: data.title_deed_number ?? null,
       description: data.description ?? null,
+      property_type: data.property_type ?? null,
+      ejar_registered: data.ejar_registered ?? null,
+      ejar_number: data.ejar_number ?? null,
+      zatca_tax_category: data.zatca_tax_category ?? null,
+      construction_year: data.construction_year ?? null,
+      property_condition: data.property_condition ?? null,
     };
     if (editingProperty) {
       await update.mutateAsync({ id: editingProperty.id, body });
