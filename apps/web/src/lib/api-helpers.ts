@@ -5,20 +5,10 @@ import { jsonResponse } from "./errors";
 import { log } from "./logger";
 
 export async function getUserFromRequest(req: NextRequest): Promise<JwtPayload | null> {
-  // 1. Fast path: headers injected by middleware (already verified)
-  const userId = req.headers.get("x-user-id");
-  const email = req.headers.get("x-user-email");
-  const userType = req.headers.get("x-user-type");
-  if (userId && email && userType) {
-    return {
-      userId,
-      email,
-      userType,
-      officeId: req.headers.get("x-office-id"),
-    };
-  }
-
-  // 2. Fallback: direct cookie-based or Bearer token auth (API/curl/mobile)
+  // Identity is always derived from a verified credential — never from
+  // request headers. The proxy strips inbound x-user-* headers, but a route
+  // must not depend on that for authz (exempted prefixes bypass the gate,
+  // and the matcher's static-asset carve-out skips the proxy entirely).
   const cookieToken = req.cookies.get(TOKEN_COOKIE)?.value;
   if (cookieToken) return verifyToken(cookieToken);
 
