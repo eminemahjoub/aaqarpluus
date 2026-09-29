@@ -10,3 +10,8 @@ apps/web/.env.*
 # User uploads — keep directory only (see .gitkeep); do not commit binaries
 apps/web/public/uploads/**
 !apps/web/public/uploads/.gitkeep
+
+# TypeScript build cache
+*.tsbuildinfo
+# pnpm content-addressable store (local only)
+apps/web/.pnpm-store/
