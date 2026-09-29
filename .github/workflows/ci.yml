@@ -25,10 +25,8 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm@9
 
-      # Plain install, matching the Dockerfile — the committed lockfile is
-      # known to lag, and --frozen-lockfile would fail CI on pre-existing drift.
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: npx tsc --noEmit
