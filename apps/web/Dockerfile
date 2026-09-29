@@ -55,6 +55,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Uploads dir (outside public/) — served only via the auth-gated /uploads/ route
+RUN mkdir -p /app/data/uploads && chown -R nextjs:nodejs /app/data
+
 USER nextjs
 
 EXPOSE 2000

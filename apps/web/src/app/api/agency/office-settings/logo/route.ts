@@ -5,6 +5,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, serverError, badRequest } from "@/lib/api-helpers";
+import { localUploadsRoot } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     // as an on-disk path component. officeId is the authenticated agency's DB UUID.
     const safeName = `logo_${officeId}_${randomUUID()}${extension}`;
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "logos");
+    const uploadDir = path.join(localUploadsRoot(), "logos");
     await mkdir(uploadDir, { recursive: true });
 
     // Defense-in-depth: keep the final path inside the upload directory.

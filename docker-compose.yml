@@ -32,6 +32,9 @@ services:
     ports:
       # Web service mapped to port 2001 on host
       - "2001:2000"
+    volumes:
+      # Uploaded files — served by the auth-gated /uploads/ route handler
+      - uploads_data:/app/data/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -39,3 +42,4 @@ services:
 
 volumes:
   pg_data:
+  uploads_data:

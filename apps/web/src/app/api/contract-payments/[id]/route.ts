@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { ok, badRequest } from "@/lib/api-helpers";
+import { localUploadsRoot } from "@/lib/storage";
 import {
   withAuth,
   resolveContext,
@@ -210,7 +211,7 @@ export const PUT = withAuth<ContractContext, { id: string }>(paymentResolver, as
         const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment, zatcaQR });
         // nosemgrep: path-join-resolve-traversal — owner_id is a DB UUID from the
         // ownership-verified contract; the resolved path is guard-checked below.
-        const uploadsDir = path.join(process.cwd(), "public", "uploads", String((contract as any).owner_id)); // nosemgrep: path-join-resolve-traversal
+        const uploadsDir = path.join(localUploadsRoot(), String((contract as any).owner_id)); // nosemgrep: path-join-resolve-traversal
         await mkdir(uploadsDir, { recursive: true });
         const contractNumber = contract.extra && typeof contract.extra === "object"
           ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)

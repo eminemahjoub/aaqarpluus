@@ -13,6 +13,22 @@ export function isStorageConfigured(): boolean {
   return Boolean(process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY && process.env.S3_BUCKET);
 }
 
+/** Root of the local uploads dir — outside public/ so files are only served via the auth-gated /uploads/ route handler. */
+export function localUploadsRoot(): string {
+  return process.env.UPLOADS_DIR ?? path.join(process.cwd(), "data", "uploads");
+}
+
+/**
+ * Resolves /uploads/<segments> to an absolute path inside localUploadsRoot().
+ * Returns null on traversal outside the root.
+ */
+export function resolveLocalUploadPath(segments: string[]): string | null {
+  const root = path.resolve(localUploadsRoot());
+  const abs = path.resolve(root, ...segments);
+  if (abs !== root && !abs.startsWith(root + path.sep)) return null;
+  return abs;
+}
+
 /**
  * Resolves the active provider: S3 when configured, local disk otherwise.
  * Callers that need behavior parity must check isStorageConfigured() for
@@ -29,17 +45,20 @@ export function getStorage(): StorageProvider {
 }
 
 /**
- * Local disk provider — mirrors the current on-disk layout (public/uploads/).
+ * Local disk provider — writes under localUploadsRoot() (data/uploads by
+ * default) and returns /uploads/ URLs served by the auth-gated route handler.
  * Keep the base name server-generated at call sites; this wrapper never
  * sanitizes names (the documents route does that itself today).
  */
 export class LocalProvider implements StorageProvider {
   async upload(buffer: Buffer, key: string, contentType?: string): Promise<string> {
     void contentType;
-    const abs = path.join(process.cwd(), "public", ...key.split("/"));
+    const rel = key.replace(/^uploads\//, "");
+    const abs = resolveLocalUploadPath(rel.split("/"));
+    if (!abs) throw new Error(`Invalid upload key: ${key}`);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, buffer);
-    return `/uploads/${key.replace(/^uploads\//, "")}`;
+    return `/uploads/${rel}`;
   }
 
   async getSignedUrl(key: string): Promise<string> {
@@ -47,7 +66,8 @@ export class LocalProvider implements StorageProvider {
   }
 
   async delete(key: string): Promise<void> {
-    const abs = path.join(process.cwd(), "public", ...key.split("/"));
+    const abs = resolveLocalUploadPath(key.replace(/^uploads\//, "").split("/"));
+    if (!abs) return;
     try {
       await unlink(abs);
     } catch (err) {
@@ -57,6 +77,7 @@ export class LocalProvider implements StorageProvider {
 }
 
 export async function readLocalUpload(key: string): Promise<Buffer> {
-  const abs = path.join(process.cwd(), "public", ...key.split("/"));
+  const abs = resolveLocalUploadPath(key.replace(/^uploads\//, "").split("/"));
+  if (!abs) throw new Error(`Invalid upload key: ${key}`);
   return readFile(abs);
 }

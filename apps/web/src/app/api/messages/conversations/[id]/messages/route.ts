@@ -10,6 +10,7 @@ import { badRequest, forbidden, handleError, unauthorized } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
 import { badZod } from "@/lib/validation";
 import { markConversationRead, requireConversationParticipant } from "@/lib/messages";
+import { localUploadsRoot } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
 import { notifications } from "@/lib/notifications";
 
@@ -105,7 +106,7 @@ const SendJsonSchema = z.object({
 });
 
 async function ensureUploadsDir() {
-  const dir = path.join(process.cwd(), "public", "uploads", "messages");
+  const dir = path.join(localUploadsRoot(), "messages");
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }
