@@ -10,3 +10,9 @@ apps/web/.env.*
 # User uploads — served only via the auth-gated /uploads/ route; do not commit binaries
 apps/web/data/uploads/**
 !apps/web/data/uploads/.gitkeep
+
+# TypeScript build cache
+*.tsbuildinfo
+# pnpm content-addressable store (local only)
+apps/web/.pnpm-store/
+
