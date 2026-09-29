@@ -8,7 +8,9 @@ import { ownerHidesTenantPii, sanitizeContactForOwner } from "@/lib/owner-tenant
 
 export async function GET(req: NextRequest) {
   try {
+    console.log("[DEBUG contacts] GET reached");
     const user = await getUserFromRequest(req);
+    console.log("[DEBUG contacts] user=", user ? "present" : "null");
     if (!user) throw throwUnauthorized();
 
     const { searchParams } = new URL(req.url);

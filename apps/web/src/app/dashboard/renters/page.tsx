@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { authFetch } from "@/lib/auth-fetch";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Home, MapPin, Phone, User, Wallet, X, FileText, Key, Search } from "lucide-react";
@@ -83,7 +82,7 @@ export default function RentersCardsPage() {
     : renters;
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6" dir="rtl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">المستأجرين</h1>
@@ -237,6 +236,6 @@ export default function RentersCardsPage() {
           </div>
         </div>
       ) : null}
-    </DashboardLayout>
+    </>
   );
 }

@@ -29,15 +29,15 @@ import {
  *    offices see docs on accessible properties.
  * Response is a direct array (frontend maps over res.json()).
  *
- * POST is the multipart file-upload endpoint: file + property_id (+ optional
- * contract_id/category). The Document row metadata (file_name, public_url,
+ * POST is the multipart file-upload endpoint: file + optional property_id /
+ * contract_id / category. The Document row metadata (file_name, public_url,
  * object_path) is derived server-side — clients never supply paths. Uploads
  * now require documents_mutate and real property access (the legacy check
  * allowed any non-agency user to attach documents to arbitrary properties).
  */
 
 const UploadMetaSchema = z.object({
-  property_id: UuidSchema,
+  property_id: UuidSchema.optional().nullable(),
   contract_id: UuidSchema.optional().nullable(),
   category: z.string().trim().optional().nullable(),
 });
@@ -161,12 +161,17 @@ export const POST = withAuth<UserContext>(
     });
     if (!metaParsed.success) throw badRequest(badZod(metaParsed.error));
 
-    const pid = String(metaParsed.data.property_id);
-    await assertPropertyAccess(ctx, pid);
+    const pid = metaParsed.data.property_id;
+    let ownerId: string;
 
-    const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
-    if (!prop) throw badRequest("العقار غير موجود");
-    const ownerId = String((prop as any).owner_id);
+    if (pid) {
+      await assertPropertyAccess(ctx, pid);
+      const prop = await ds.getRepository("Property").findOne({ where: { id: pid } as any });
+      if (!prop) throw badRequest("العقار غير موجود");
+      ownerId = String((prop as any).owner_id);
+    } else {
+      ownerId = ctx.userId;
+    }
 
     // nosemgrep: path-join-resolve-traversal — ownerId is the DB UUID of the
     // ownership-verified property; the resolved path is guard-checked below.
@@ -206,7 +211,7 @@ export const POST = withAuth<UserContext>(
     const repo = ds.getRepository("Document");
     const doc = repo.create({
       owner_id: ownerId,
-      property_id: pid,
+      property_id: pid || null,
       file_name: file.name,
       mime_type: file.type || null,
       object_path: filePath,
