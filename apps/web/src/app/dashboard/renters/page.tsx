@@ -13,7 +13,7 @@ type Renter = {
   sex?: string;
   id_number?: string;
   status?: string;
-  pin_hash?: string;
+  pin_set?: boolean;
 };
 
 type Contract = {
@@ -182,7 +182,7 @@ export default function RentersCardsPage() {
                       <span>{selected.sex}</span>
                     </div>
                   ) : null}
-                  {selected.pin_hash ? (
+                  {selected.pin_set ? (
                     <div className="flex items-center gap-2">
                       <Key className="h-4 w-4 text-gray-400" />
                       <span className="text-emerald-700 dark:text-emerald-400">يمكنه تسجيل الدخول</span>

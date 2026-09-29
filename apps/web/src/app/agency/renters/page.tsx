@@ -23,8 +23,7 @@ type Renter = {
   status: string;
   notes: string | null;
   created_at: string;
-  pin_hash?: string | null;
-  pin_plain?: string | null;
+  pin_set?: boolean;
 };
 
 type PropertyItem = { id: string; name: string };
@@ -1356,16 +1355,16 @@ export default function AgencyRentersPage() {
                     <Key className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                     <h4 className="font-bold text-gray-900 dark:text-white">رمز الدخول</h4>
                   </div>
-                  {generatedPassword || r.pin_plain ? (
+                  {generatedPassword ? (
                     <div className="space-y-3">
                       <div className="rounded-lg bg-white p-3 text-center dark:bg-[#1a3528]">
                         <p className="select-all text-2xl font-mono font-bold tracking-widest text-indigo-700 dark:text-indigo-300" dir="ltr">
-                          {generatedPassword ?? r.pin_plain}
+                          {generatedPassword}
                         </p>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">شارك هذا الرمز مع المستأجر. يمكنه تغييره لاحقًا من بوابته.</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">شارك هذا الرمز مع المستأجر — يُعرض مرة واحدة فقط. يمكنه تغييره لاحقًا من بوابته.</p>
                     </div>
-                  ) : r.pin_hash ? (
+                  ) : r.pin_set ? (
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm text-emerald-700 dark:text-emerald-300">تم تفعيل الدخول لهذا المستأجر.</p>
                       <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">

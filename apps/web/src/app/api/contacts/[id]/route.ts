@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, badRequest } from "@/lib/api-helpers";
 import { handleError } from "@/lib/errors";
+import { stripPinSecrets } from "@/lib/owner-tenant-privacy";
 
 async function assertCanAccessContact(ds: any, user: any, contactId: string) {
   const userType = String(user.userType ?? "");
@@ -66,7 +67,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     } as any);
 
     const updated = await repo.findOne({ where: { id } as any });
-    return ok(updated);
+    return ok(stripPinSecrets(updated as Record<string, unknown>));
   } catch (err) {
     return handleError(err);
   }

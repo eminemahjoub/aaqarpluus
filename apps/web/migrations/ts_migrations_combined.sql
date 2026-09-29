@@ -114,6 +114,9 @@ CREATE INDEX IF NOT EXISTS idx_maintenance_predictions_unit_id ON maintenance_pr
 CREATE INDEX IF NOT EXISTS idx_maintenance_predictions_risk_level ON maintenance_predictions(risk_level) WHERE is_resolved = false;
 CREATE INDEX IF NOT EXISTS idx_maintenance_predictions_failure_date ON maintenance_predictions(predicted_failure_date) WHERE is_resolved = false;
 
+-- ============ DropContactPinPlain20260929000000 ============
+ALTER TABLE contacts DROP COLUMN IF EXISTS pin_plain;
+
 -- ============ TypeORM migrations ledger ============
 CREATE TABLE IF NOT EXISTS migrations (
   id SERIAL PRIMARY KEY,
@@ -125,7 +128,8 @@ INSERT INTO migrations (timestamp, name) VALUES
   (20260626000000, 'AddContactPinPlain20260626000000'),
   (20260627000000, 'AddContactUniqueConstraints20260627000000'),
   (20260629000000, 'AddRevenuePaymentId20260629000000'),
-  (20260809000004, 'AddMaintenancePredictionFields20260809000004')
+  (20260809000004, 'AddMaintenancePredictionFields20260809000004'),
+  (20260929000000, 'DropContactPinPlain20260929000000')
 ON CONFLICT DO NOTHING;
 
 COMMIT;
