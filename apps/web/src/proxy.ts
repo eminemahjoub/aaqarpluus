@@ -4,6 +4,16 @@ import { REFRESH_COOKIE, TOKEN_COOKIE, verifyToken, validateCsrfToken } from "./
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
+  // Identity headers are only trustworthy when this proxy sets them after
+  // verifying the JWT. Strip inbound copies on EVERY path — including the
+  // allowlisted /api/auth, /api/tenant, /api/receipts, /api/health prefixes —
+  // so a client can never inject a forged identity.
+  const requestHeaders = new Headers(request.headers);
+  for (const h of ["x-user-id", "x-user-email", "x-user-type", "x-office-id"]) {
+    requestHeaders.delete(h);
+  }
+  const next = () => NextResponse.next({ request: { headers: requestHeaders } });
+
   // --- API route protection ---
   // /api/auth/* handles its own auth (incl. tenant PIN login) and
   // /api/tenant/* authenticates via the dedicated tenant JWT — neither
@@ -42,7 +52,6 @@ export async function proxy(request: NextRequest) {
       }
     }
 
-    const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-user-id", user.userId);
     requestHeaders.set("x-user-email", user.email);
     requestHeaders.set("x-user-type", user.userType);
@@ -50,9 +59,7 @@ export async function proxy(request: NextRequest) {
       requestHeaders.set("x-office-id", user.officeId);
     }
 
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    });
+    return next();
   }
 
   // --- Page route protection ---
@@ -60,13 +67,13 @@ export async function proxy(request: NextRequest) {
     const token = request.cookies.get(TOKEN_COOKIE)?.value;
     const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
     if (!token) {
-      if (refresh) return NextResponse.next({ request });
+      if (refresh) return next();
       const loginUrl = new URL("/login", request.url);
       return NextResponse.redirect(loginUrl);
     }
     const user = await verifyToken(token);
     if (!user) {
-      if (refresh) return NextResponse.next({ request });
+      if (refresh) return next();
       const loginUrl = new URL("/login", request.url);
       return NextResponse.redirect(loginUrl);
     }
@@ -74,7 +81,7 @@ export async function proxy(request: NextRequest) {
     const userType = String((user as any).userType ?? "");
 
     if (path.startsWith("/admin")) {
-      if (userType === "superadmin") return NextResponse.next({ request });
+      if (userType === "superadmin") return next();
       const url = new URL(userType === "agency" ? "/agency" : "/dashboard", request.url);
       return NextResponse.redirect(url);
     }
@@ -93,7 +100,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next({ request });
+  return next();
 }
 
 export const config = {
