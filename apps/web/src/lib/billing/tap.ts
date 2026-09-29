@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { log } from "@/lib/logger";
 
 /**
@@ -26,9 +27,42 @@ export interface TapChargeResult {
   amount: number;
   currency: string;
   transaction?: { authorization_id?: string; receipt_id?: string };
+  reference?: { gateway?: string; payment?: string };
+  metadata?: Record<string, string>;
 }
 
 const configured = Boolean(process.env.TAP_SECRET_KEY);
+
+// Currencies whose amounts Tap signs to 3 decimal places; everything else is 2.
+const TAP_THREE_DECIMAL_CURRENCIES = new Set(["BHD", "KWD", "OMR", "JOD", "IQD", "TND"]);
+
+/**
+ * Verifies the `hashstring` header Tap sends on webhook deliveries.
+ * Tap signs an ordered x_-labelled concatenation with HMAC-SHA256 hex, keyed
+ * by the Secret API Key (the same key as Bearer auth). Field order is fixed —
+ * see https://developers.tap.company/docs/webhook
+ */
+export function verifyTapWebhookSignature(
+  hashstring: string | null,
+  body: Record<string, any> | null
+): boolean {
+  const secret = process.env.TAP_SECRET_KEY;
+  if (!secret || !hashstring || !body) return false;
+  const decimals = TAP_THREE_DECIMAL_CURRENCIES.has(String(body.currency ?? "")) ? 3 : 2;
+  const amount = Number(body.amount ?? 0).toFixed(decimals);
+  const signed =
+    `x_id${body.id ?? ""}` +
+    `.x_amount${amount}` +
+    `.x_currency${body.currency ?? ""}` +
+    `.x_gateway_reference${body.reference?.gateway ?? ""}` +
+    `.x_payment_reference${body.reference?.payment ?? ""}` +
+    `.x_status${body.status ?? ""}` +
+    `.x_created${body.transaction?.created ?? ""}`;
+  const expected = createHmac("sha256", secret).update(signed).digest("hex");
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(String(hashstring), "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export async function createCharge(params: TapChargeParams): Promise<TapChargeResult> {
   if (!configured) {
