@@ -5,6 +5,7 @@ import path from "path";
 import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, unauthorized, ok, created, serverError, badRequest } from "@/lib/api-helpers";
 import { denyIfOwnerCannotMutateProperties } from "@/lib/mutate-guard";
+import { localUploadsRoot } from "@/lib/storage";
 
 async function getAccessiblePropertyIds(ds: any, user: any): Promise<string[] | null> {
   const userType = String(user.userType ?? "");
@@ -124,15 +125,13 @@ export async function POST(req: NextRequest) {
     // on-disk path component (only its validated extension suffix is kept).
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}${extension}`;
 
-    // Store in /public/uploads/properties/<ownerId>/ or /public/uploads/units/<ownerId>/
+    // Store in <uploads>/properties/<ownerId>/ or <uploads>/units/<ownerId>/
     const subDir = unitId ? "units" : "properties";
     // nosemgrep: path-join-resolve-traversal — ownerId is the DB UUID of the
     // ownership-verified property and subDir is a fixed literal; the resolved path
     // is guard-checked below.
     const uploadDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
+      localUploadsRoot(),
       subDir,
       ownerId, // nosemgrep: path-join-resolve-traversal
     );

@@ -4,6 +4,7 @@ import path from "path";
 import { z } from "zod";
 import { getDataSource } from "@/lib/db/data-source";
 import { ok, created } from "@/lib/api-helpers";
+import { localUploadsRoot } from "@/lib/storage";
 import { badRequest } from "@/lib/errors";
 import { UuidSchema, badZod } from "@/lib/validation";
 import { buildOwnerContractSummary, ownerHidesTenantPii } from "@/lib/owner-tenant-privacy";
@@ -70,7 +71,7 @@ async function createReceiptDocument(ds: any, contract: any, payment: any) {
   const pdfBytes = await createPaymentReceiptPdfBytes({ contract, payment });
   // nosemgrep: path-join-resolve-traversal — owner_id is a DB UUID from the
   // ownership-verified contract; the resolved path is guard-checked below.
-  const uploadsDir = path.join(process.cwd(), "public", "uploads", String(contract.owner_id)); // nosemgrep: path-join-resolve-traversal
+  const uploadsDir = path.join(localUploadsRoot(), String(contract.owner_id)); // nosemgrep: path-join-resolve-traversal
   await mkdir(uploadsDir, { recursive: true });
   const contractNumber = contract.extra && typeof contract.extra === "object"
     ? String((contract.extra as { contract_number?: unknown }).contract_number ?? contract.id)

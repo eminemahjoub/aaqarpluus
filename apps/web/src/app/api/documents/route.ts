@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getDataSource } from "@/lib/db/data-source";
 import { ok, created } from "@/lib/api-helpers";
+import { localUploadsRoot } from "@/lib/storage";
 import { badRequest } from "@/lib/errors";
 import { UuidSchema, badZod } from "@/lib/validation";
 import {
@@ -175,7 +176,7 @@ export const POST = withAuth<UserContext>(
 
     // nosemgrep: path-join-resolve-traversal — ownerId is the DB UUID of the
     // ownership-verified property; the resolved path is guard-checked below.
-    const uploadsDir = path.join(process.cwd(), "public", "uploads", ownerId); // nosemgrep: path-join-resolve-traversal
+    const uploadsDir = path.join(localUploadsRoot(), ownerId); // nosemgrep: path-join-resolve-traversal
     await mkdir(uploadsDir, { recursive: true });
 
     // Server-generated on-disk name: the client-supplied name is never used as a

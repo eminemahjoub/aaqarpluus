@@ -7,6 +7,6 @@
 apps/web/.env
 apps/web/.env.*
 /.kilo  
-# User uploads — keep directory only (see .gitkeep); do not commit binaries
-apps/web/public/uploads/**
-!apps/web/public/uploads/.gitkeep
+# User uploads — served only via the auth-gated /uploads/ route; do not commit binaries
+apps/web/data/uploads/**
+!apps/web/data/uploads/.gitkeep
