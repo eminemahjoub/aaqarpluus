@@ -110,6 +110,15 @@ export function sanitizeContractForOwner(contract: Record<string, unknown>, paym
   };
 }
 
+/**
+ * Removes PIN material (hash/plaintext) from a contact row before it leaves
+ * the API, exposing only a `pin_set` boolean so UIs can show "login enabled".
+ */
+export function stripPinSecrets(contact: Record<string, unknown>): Record<string, unknown> {
+  const { pin_hash, pin_plain: _pinPlain, ...rest } = contact;
+  return { ...rest, pin_set: Boolean(pin_hash) };
+}
+
 export function sanitizeContactForOwner(contact: Record<string, unknown>): Record<string, unknown> {
   if (String(contact.type ?? "") !== "tenant") return contact;
   return {

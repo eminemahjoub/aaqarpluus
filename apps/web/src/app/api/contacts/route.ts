@@ -4,13 +4,11 @@ import { getDataSource } from "@/lib/db/data-source";
 import { getUserFromRequest, ok, created, badRequest, unauthorized } from "@/lib/api-helpers";
 import { handleError, unauthorized as throwUnauthorized } from "@/lib/errors";
 import { parsePagination, paginated } from "@/lib/pagination";
-import { ownerHidesTenantPii, sanitizeContactForOwner } from "@/lib/owner-tenant-privacy";
+import { ownerHidesTenantPii, sanitizeContactForOwner, stripPinSecrets } from "@/lib/owner-tenant-privacy";
 
 export async function GET(req: NextRequest) {
   try {
-    console.log("[DEBUG contacts] GET reached");
     const user = await getUserFromRequest(req);
-    console.log("[DEBUG contacts] user=", user ? "present" : "null");
     if (!user) throw throwUnauthorized();
 
     const { searchParams } = new URL(req.url);
@@ -71,7 +69,7 @@ export async function GET(req: NextRequest) {
       if (!page) {
         const rows = await ds.query(baseQuery, params);
         const items = (rows ?? []).map((r: Record<string, unknown>) =>
-          ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
+          stripPinSecrets(ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r)
         );
         return ok(items);
       }
@@ -85,7 +83,7 @@ export async function GET(req: NextRequest) {
       params.push(page.limit, page.offset);
       const rows = await ds.query(baseQuery + ` LIMIT $${idx++} OFFSET $${idx++}`, params);
       const agencyItems = (rows ?? []).map((r: Record<string, unknown>) =>
-        ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r
+        stripPinSecrets(ownerHidesTenantPii(user) ? sanitizeContactForOwner(r) : r)
       );
       return ok(paginated({ items: agencyItems, total, page: page.page, limit: page.limit, search }));
     }
@@ -103,13 +101,13 @@ export async function GET(req: NextRequest) {
     if (!page) {
       const contacts = await qb.getMany();
       const mapped = contacts.map((c) =>
-        ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : c
+        stripPinSecrets(ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : (c as Record<string, unknown>))
       );
       return ok(mapped);
     }
     const [items, total] = await qb.skip(page.offset).take(page.limit).getManyAndCount();
     const mappedItems = items.map((c) =>
-      ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : c
+      stripPinSecrets(ownerHidesTenantPii(user) ? sanitizeContactForOwner(c as Record<string, unknown>) : (c as Record<string, unknown>))
     );
     return ok(paginated({ items: mappedItems, total, page: page.page, limit: page.limit, search }));
   } catch (err) {
