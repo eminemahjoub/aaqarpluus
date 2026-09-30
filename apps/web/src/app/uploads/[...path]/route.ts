@@ -5,6 +5,8 @@ import path from "path";
 import { getUserFromRequest } from "@/lib/api-helpers";
 import { getTenantFromRequest } from "@/lib/tenant-api-helpers";
 import { resolveLocalUploadPath } from "@/lib/storage";
+import { getDataSource } from "@/lib/db/data-source";
+import { classifyUploadPath, canAccessOwnerFiles, canAccessMessageFile } from "@/lib/upload-access";
 
 const MIME: Record<string, string> = {
   jpg: "image/jpeg",
@@ -24,21 +26,44 @@ const INLINE_SAFE = new Set(["jpg", "jpeg", "png", "gif", "webp", "pdf", "mp4", 
 
 /**
  * GET /uploads/* — serves files from the uploads dir (data/uploads, outside
- * public/) to any authenticated staff or tenant session. Previously these
- * were public static files: anyone holding a URL could read tenant documents.
+ * public/) to authorized staff. Previously these were public static files:
+ * anyone holding a URL could read tenant documents.
  *
- * NOTE: this authenticates but does not scope per-owner — any logged-in user
- * can fetch any upload. Per-object authorization is a follow-up.
+ * Access rules (see lib/upload-access.ts):
+ *  - requires a staff session (tenant PIN users are denied — they reach their
+ *    receipts via /api/receipts/*)
+ *  - superadmin: everything
+ *  - logos/: any staff user (office branding shown across roles)
+ *  - messages/: participant in the owning conversation
+ *  - <ownerId>/ and properties|units/<ownerId>/: self, or agency linked to
+ *    that owner (office_owner_links / created_by_agency_id)
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path?: string[] }> }) {
-  const [user, tenant] = await Promise.all([getUserFromRequest(req), getTenantFromRequest(req)]);
-  if (!user && !tenant) {
-    return new Response("Unauthorized", { status: 401 });
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    // A tenant session alone is not sufficient — respond as unauthenticated.
+    const tenant = await getTenantFromRequest(req);
+    return new Response("Unauthorized", { status: tenant ? 403 : 401 });
   }
 
   const segments = (await params).path ?? [];
   const abs = segments.length ? resolveLocalUploadPath(segments) : null;
   if (!abs) return new Response("Bad request", { status: 400 });
+
+  const cls = classifyUploadPath(segments);
+  const ds = await getDataSource();
+  let allowed = false;
+  if (String(user.userType) === "superadmin") {
+    allowed = true;
+  } else if (cls.kind === "logos") {
+    allowed = true;
+  } else if (cls.kind === "messages") {
+    allowed = await canAccessMessageFile(ds, user, segments.join("/"));
+  } else if (cls.kind === "owner") {
+    allowed = await canAccessOwnerFiles(ds, user, cls.ownerId);
+  }
+  // 404 rather than 403 — do not disclose which paths exist.
+  if (!allowed) return new Response("Not found", { status: 404 });
 
   let buf: Buffer;
   try {
